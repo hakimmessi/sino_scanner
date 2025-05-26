@@ -17,8 +17,8 @@ include_directories(
 
 # Define sources for the application executable
 set(SOURCES
-        "main.cc"
-        "my_application.cc"
+        "runner/main.cc"
+        "runner/my_application.cc"
         "src/sinosecu_wrapper.cpp" # the c++ wrapper
         "${FLUTTER_APP_DIR}/generated_plugin_registrant.cc"
 )
