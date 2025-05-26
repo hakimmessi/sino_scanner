@@ -1,16 +1,13 @@
 cmake_minimum_required(VERSION 3.10)
 project(sino_scanner LANGUAGES CXX C) # Ensure CXX is listed for C++
 
-# This is usually Flutter's default version, ensure it's appropriate
+
 set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# Flutter specific (usually already there)
 set(FLUTTER_PROJECT_NAME "sino_scanner")
-set(FLUTTER_APPLICATION_ID "com.example.sino_scanner") # Match your app ID
+set(FLUTTER_APPLICATION_ID "com.example.sino_scanner")
 
-# Flutter Linux specific (usually already there)
-include(flutter/flutter.cmake)
 
 # Add your source directory and the SDK directory to include paths
 include_directories(
