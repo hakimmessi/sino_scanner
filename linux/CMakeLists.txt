@@ -20,7 +20,7 @@ set(SOURCES
         "runner/main.cc"
         "runner/my_application.cc"
         "src/sinosecu_wrapper.cpp" # the c++ wrapper
-        "${FLUTTER_APP_DIR}/generated_plugin_registrant.cc"
+        "flutter/generated_plugin_registrant.cc"
 )
 
 # Define the executable
