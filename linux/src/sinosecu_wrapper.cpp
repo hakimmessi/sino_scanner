@@ -1,72 +1,242 @@
-#include "sinosecu_wrapper.h"
-#include <iostream>
-#include <codecvt>
-#include <locale>
+#include "my_application.h"
 
-// --- String Conversion Utility ---
-// Convert a std::string (UTF-8) to std::wstring (platform-dependent wchar_t, often UTF-32 on Linux)
-std::wstring string_to_wstring(const std::string& str) {
-    try {
-        std::wstring_convert<std::codecvt_utf8_utf16<wchar_t>> converter; // UTF-16 intermediate
-        return converter.from_bytes(str);
-    } catch (const std::range_error& e) {
-        std::cerr << "WString conversion failed (range_error): " << e.what() << std::endl;
-        // Return an empty wstring or handle error appropriately
-        // This might happen if the input string is not valid UTF-8
-        return L"";
-    }
-}
+#include <flutter_linux/flutter_linux.h>
+#ifdef GDK_WINDOWING_X11
+#include <gdk/gdkx.h>
+#endif
+
+#include "flutter/generated_plugin_registrant.h"
+#include "src/sinosecu_wrapper.h" // C++ wrapper class header
+#include <memory>                // For std::unique_ptr
+#include <iostream>              // For std::cout, std::cerr
+#include <map>                   // For std::map (used by autoProcessDocumentInScanner)
+
+// Global instance of our scanner wrapper.
+static std::unique_ptr<SinosecuScanner> global_scanner_instance;
 
 
-// --- SinosecuScanner Class Implementation ---
+const char APPLICATION_ID[] = "com.example.sino_scanner";
 
-SinosecuScanner::SinosecuScanner() {
-    // Constructor: Called when a SinosecuScanner object is created.
-    // You could do initial setup here if needed, but for now, it's empty.
-    std::cout << "SinosecuScanner object created." << std::endl;
-}
 
-SinosecuScanner::~SinosecuScanner() {
-    // Destructor: Called when the SinosecuScanner object is destroyed.
-    // Good place to ensure resources are released, though we'll do it explicitly with releaseScanner().
-    std::cout << "SinosecuScanner object destroyed." << std::endl;
-}
+struct _MyApplication {
+    GtkApplication parent_instance;
+    char** dart_entrypoint_arguments;
+};
 
-int SinosecuScanner::initializeScanner(const std::string& userId, int nType, const std::string& sdkDirectory) {
-    // Convert std::string to const wchar_t* for the SDK
-    std::wstring wUserId = string_to_wstring(userId);
-    std::wstring wSdkDirectory = string_to_wstring(sdkDirectory);
+G_DEFINE_TYPE(MyApplication, my_application, GTK_TYPE_APPLICATION)
 
-    // LPCWSTR is 'Long Pointer to Constant Wide String', equivalent to const wchar_t*
-    const wchar_t* lpUserId = wUserId.c_str();
-    const wchar_t* lpDirectory = wSdkDirectory.c_str();
+// Platform Channel Method Call Handler
+static FlMethodResponse* handle_platform_method_call(FlMethodChannel* channel, FlMethodCall* method_call, gpointer user_data) {
+    const gchar* method_name = fl_method_call_get_name(method_call);
+    FlValue* args = fl_method_call_get_args(method_call);
 
-    std::wcout << L"Attempting to initialize Sinosecu SDK with:" << std::endl;
-    std::wcout << L"  UserID: " << lpUserId << std::endl;
-    std::wcout << L"  nType: " << nType << std::endl;
-    std::wcout << L"  Directory: " << lpDirectory << std::endl;
-
-    // Call the SDK's InitIDCard function
-    int result = InitIDCard(lpUserId, nType, lpDirectory); // [cite: 29]
-
-    // Check the result
-    if (result == 0) {
-        std::cout << "Sinosecu SDK initialized successfully." << std::endl;
+    // Ensure our scanner instance exists for most calls.
+    // For "initializeScanner", we create it if it doesn't exist.
+    if (strcmp(method_name, "initializeScanner") == 0) {
+        if (!global_scanner_instance) {
+            global_scanner_instance = std::make_unique<SinosecuScanner>();
+        }
     } else {
-        std::cerr << "Sinosecu SDK initialization failed. Error code: " << result << std::endl;
-        // this example below are from the SDK docs,
-        // 1: Authorization ID is incorrect
-        // 2: Device initialization is failed
-        // 3: Recognition engine initialization is failed
-        // 4: Authorization files are not found
-        // 5: Recognition engine is failed to load templates
-        // 6: Chip reader initialization is failed
+        // For other methods, if the instance doesn't exist or scanner isn't ready, return error.
+        if (!global_scanner_instance) {
+            std::cerr << "C++ Error: global_scanner_instance is null for method " << method_name << std::endl;
+            return FL_METHOD_RESPONSE(fl_method_error_response_new("SCANNER_NOT_READY", "Scanner instance not available.", nullptr));
+        }
     }
-    return result; // Return the result to the caller (which will be Flutter via platform channel)
+
+    FlMethodResponse* response = nullptr;
+
+    if (strcmp(method_name, "initializeScanner") == 0) {
+        if (fl_value_get_type(args) != FL_VALUE_TYPE_MAP) {
+            std::cerr << "C++ Error: initializeScanner arguments are not a map." << std::endl;
+            return FL_METHOD_RESPONSE(fl_method_error_response_new("ARGUMENT_ERROR", "Expected map argument for initializeScanner", nullptr));
+        }
+
+        FlValue* user_id_value = fl_value_lookup_string(args, "userId");
+        FlValue* n_type_value = fl_value_lookup_string(args, "nType");
+        FlValue* sdk_dir_value = fl_value_lookup_string(args, "sdkDirectory");
+
+        if (!user_id_value || fl_value_get_type(user_id_value) != FL_VALUE_TYPE_STRING ||
+            !n_type_value || fl_value_get_type(n_type_value) != FL_VALUE_TYPE_INT || // Check for INT
+            !sdk_dir_value || fl_value_get_type(sdk_dir_value) != FL_VALUE_TYPE_STRING) {
+            std::cerr << "C++ Error: Missing or incorrect argument types for initializeScanner." << std::endl;
+            // For debugging:
+            // if (user_id_value) std::cerr << "  userId type: " << fl_value_get_type(user_id_value) << std::endl; else std::cerr << "  userId missing" << std::endl;
+            // if (n_type_value) std::cerr << "  nType type: " << fl_value_get_type(n_type_value) << std::endl; else std::cerr << "  nType missing" << std::endl;
+            // if (sdk_dir_value) std::cerr << "  sdkDir type: " << fl_value_get_type(sdk_dir_value) << std::endl; else std::cerr << "  sdkDir missing" << std::endl;
+            response = FL_METHOD_RESPONSE(fl_method_error_response_new("ARGUMENT_ERROR", "Invalid arguments for initializeScanner", nullptr));
+        } else {
+            const char* userId_cstr = fl_value_get_string(user_id_value);
+            int nType = fl_value_get_int(n_type_value); // Correctly get int
+            const char* sdkDirectory_cstr = fl_value_get_string(sdk_dir_value);
+
+            std::cout << "C++ Platform: Calling initializeScanner with UserID: " << (userId_cstr ? userId_cstr : "NULL")
+                      << ", nType: " << nType
+                      << ", Directory: " << (sdkDirectory_cstr ? sdkDirectory_cstr : "NULL") << std::endl;
+
+            int result = global_scanner_instance->initializeScanner(std::string(userId_cstr ? userId_cstr : ""), nType, std::string(sdkDirectory_cstr ? sdkDirectory_cstr : ""));
+            response = FL_METHOD_RESPONSE(fl_method_success_response_new(fl_value_new_int(result)));
+        }
+    } else if (strcmp(method_name, "releaseScanner") == 0) {
+        std::cout << "C++ Platform: Calling releaseScanner." << std::endl;
+        if (global_scanner_instance) { // Check ensures it exists before calling
+            global_scanner_instance->releaseScanner();
+        }
+        response = FL_METHOD_RESPONSE(fl_method_success_response_new(nullptr));
+    } else if (strcmp(method_name, "detectDocument") == 0) {
+        std::cout << "C++ Platform: Calling detectDocumentOnScanner." << std::endl;
+        int result = global_scanner_instance->detectDocumentOnScanner();
+        response = FL_METHOD_RESPONSE(fl_method_success_response_new(fl_value_new_int(result)));
+    } else if (strcmp(method_name, "autoProcessDocument") == 0) {
+        std::cout << "C++ Platform: Calling autoProcessDocumentInScanner." << std::endl;
+        std::map<std::string, int> cpp_result_map = global_scanner_instance->autoProcessDocumentInScanner();
+
+        // Convert std::map<std::string, int> to FlValue (map type) for Dart
+        g_autoptr(FlValue) return_value_map = fl_value_new_map();
+        for (const auto& pair : cpp_result_map) {
+            // Key is const char*, Value is FlValue*
+            fl_value_set_string_take(return_value_map, pair.first.c_str(), fl_value_new_int(pair.second));
+        }
+        response = FL_METHOD_RESPONSE(fl_method_success_response_new(return_value_map));
+    }
+    else {
+        std::cout << "C++ Platform: Method not implemented: " << method_name << std::endl;
+        response = FL_METHOD_RESPONSE(fl_method_not_implemented_response_new());
+    }
+    return response;
 }
 
-void SinosecuScanner::releaseScanner() {
-    std::cout << "Releasing Sinosecu SDK..." << std::endl;
-    FreeIDCard(); // [cite: 31]
-    std::cout << "Sinosecu SDK released." << std::endl;
+
+// Implements GApplication::activate.
+static void my_application_activate(GApplication* application) {
+    MyApplication* self = MY_APPLICATION(application);
+    GtkWindow* window =
+            GTK_WINDOW(gtk_application_window_new(GTK_APPLICATION(application)));
+
+
+        // Use a header bar when running in GNOME as this is the common style used
+        // by applications and is the setup most users will be using (e.g. Ubuntu
+        // desktop).
+        // If running on X and not using GNOME then just use a traditional title bar
+        // in case the window manager does more exotic layout, e.g. tiling.
+        // If running on Wayland assume the header bar will work (may need changing
+        // if future cases occur).
+    gboolean use_header_bar = TRUE;
+    #ifdef GDK_WINDOWING_X11
+    GdkScreen* screen = gtk_window_get_screen(GTK_WINDOW(window));
+    if (GDK_IS_X11_SCREEN(screen)) {
+        const gchar* wm_name = gdk_x11_screen_get_window_manager_name(screen);
+        if (g_strcmp0(wm_name, "GNOME Shell") != 0) {
+            use_header_bar = FALSE;
+        }
+    }
+    #endif
+    if (use_header_bar) {
+        GtkHeaderBar* header_bar = GTK_HEADER_BAR(gtk_header_bar_new());
+        gtk_widget_show(GTK_WIDGET(header_bar));
+        gtk_header_bar_set_title(header_bar, "SinoScanner App"); // Updated title
+        gtk_header_bar_set_show_close_button(header_bar, TRUE);
+        gtk_window_set_titlebar(GTK_WINDOW(window), GTK_WIDGET(header_bar));
+    } else {
+        gtk_window_set_title(GTK_WINDOW(window), "SinoScanner App"); // Updated title
+    }
+
+    gtk_window_set_default_size(GTK_WINDOW(window), 1280, 720);
+    gtk_widget_show(GTK_WIDGET(window));
+
+
+    g_autoptr(FlDartProject) project = fl_dart_project_new();
+    fl_dart_project_set_dart_entrypoint_arguments(project, self->dart_entrypoint_arguments);
+
+    FlView* view = fl_view_new(project);
+    gtk_widget_show(GTK_WIDGET(view));
+    gtk_container_add(GTK_CONTAINER(window), GTK_WIDGET(view));
+
+    // Register Flutter plugins
+    fl_register_plugins(FL_PLUGIN_REGISTRY(view));
+
+    // Register our custom platform channel
+    // FlPluginRegistrar* registrar = fl_plugin_registry_get_registrar_for_plugin(FL_PLUGIN_REGISTRY(view), "SinoScannerChannel");
+    // The above line might be problematic if "SinoScannerChannel" isn't a formally registered plugin name.
+    // A more direct way to get a messenger for a simple, non-plugin channel:
+    FlMessageChannel* messenger = fl_plugin_registry_get_messenger(FL_PLUGIN_REGISTRY(view));
+
+
+    if (messenger == nullptr) { // Check if messenger is valid
+        std::cerr << "C++ Error: Could not get plugin messenger." << std::endl;
+    } else {
+        FlMethodChannel* channel = fl_method_channel_new(
+                messenger, // Use the direct messenger
+                APPLICATION_ID,
+                FL_STANDARD_METHOD_CODEC_GET_INSTANCE);
+
+        fl_method_channel_set_method_call_handler(channel, handle_platform_method_call,
+                                                  nullptr, // user_data for the handler
+                                                  nullptr  // destroy_notify for user_data
+        );
+        std::cout << "C++ Platform: SinoScanner platform channel registered successfully with name 'com.example.sino_scanner'." << std::endl;
+    }
+
+    gtk_widget_grab_focus(GTK_WIDGET(view));
+}
+
+// Implements GApplication::local_command_line.
+static gboolean my_application_local_command_line(GApplication* application, gchar*** arguments, int* exit_status) {
+    MyApplication* self = MY_APPLICATION(application);
+    self->dart_entrypoint_arguments = g_strdupv(*arguments + 1); // Keep only args for Dart
+
+    g_autoptr(GError) error = nullptr;
+    if (!g_application_register(application, nullptr, &error)) { // Register the application
+        g_warning("Failed to register GApplication: %s", error->message);
+        *exit_status = 1;
+        return TRUE; // Stop further processing by returning TRUE
+    }
+
+    g_application_activate(application); // Activate the application
+    *exit_status = 0;
+
+    return TRUE; // We handled the command line
+}
+
+// Implements GApplication::startup.
+static void my_application_startup(GApplication* application) {
+    // Any initial setup for the application itself (not per-window)
+    G_APPLICATION_CLASS(my_application_parent_class)->startup(application);
+}
+
+// Implements GApplication::shutdown.
+static void my_application_shutdown(GApplication* application) {
+    if (global_scanner_instance) {
+        std::cout << "C++ Platform: Releasing scanner on application shutdown." << std::endl;
+        global_scanner_instance->releaseScanner();
+        global_scanner_instance.reset();
+    }
+    G_APPLICATION_CLASS(my_application_parent_class)->shutdown(application);
+}
+
+// Implements GObject::dispose.
+static void my_application_dispose(GObject* object) {
+    MyApplication* self = MY_APPLICATION(object);
+    g_clear_pointer(&self->dart_entrypoint_arguments, g_strfreev);
+    G_OBJECT_CLASS(my_application_parent_class)->dispose(object);
+}
+
+static void my_application_class_init(MyApplicationClass* klass) {
+    G_APPLICATION_CLASS(klass)->activate = my_application_activate;
+    G_APPLICATION_CLASS(klass)->local_command_line = my_application_local_command_line;
+    G_APPLICATION_CLASS(klass)->startup = my_application_startup;
+    G_APPLICATION_CLASS(klass)->shutdown = my_application_shutdown;
+    G_OBJECT_CLASS(klass)->dispose = my_application_dispose;
+}
+
+static void my_application_init(MyApplication* self) {
+    // Initialization for each instance of MyApplication, if any.
+}
+
+MyApplication* my_application_new() {
+    g_set_prgname(APPLICATION_ID);
+    return MY_APPLICATION(g_object_new(my_application_get_type(),
+                                       "application-id", APPLICATION_ID,
+                                       "flags", G_APPLICATION_NON_UNIQUE,
+                                       nullptr));
 }

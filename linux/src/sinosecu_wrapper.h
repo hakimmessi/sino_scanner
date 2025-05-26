@@ -11,6 +11,8 @@ std::wstring string_to_wstring(const std::string& str);
 extern "C" {
     init InitIDCard(const wchar_t* IpUserID, int nType, const wchar_t* IpDirectory);
     void FreeIDCard();
+    int DetectDocument();
+    int AutoProcessIDCard(int& nCardType);
 }
 
 // this class will wrap the SDK methods
@@ -24,7 +26,8 @@ public:
     // this method will initialize the SDK
     // it will take standard C++ strings and an integer, then call the SDK's InitIDCard.
     int initializeScanner(const std::string& userId, int nType, const std::string& sdkDirectory);
-    // this method will free the SDK
+    int detectDocumentOnScanner();
+    std::map<std::string, int> autoProcessDocumentInScanner();
     void releaseScanner();
 };
 #endif

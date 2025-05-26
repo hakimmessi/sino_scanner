@@ -130,7 +130,7 @@ static void my_application_activate(GApplication* application) {
     } else {
         FlMethodChannel* channel = fl_method_channel_new(
                 fl_plugin_registrar_get_messenger(registrar),
-                "com.example.scanner/sinosecu", // Must match Dart's MethodChannel name
+                "com.example.scanner/sinosecu",
                 FL_STANDARD_METHOD_CODEC_GET_INSTANCE);
 
         fl_method_channel_set_method_call_handler(channel, handle_platform_method_call,

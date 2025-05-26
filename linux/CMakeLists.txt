@@ -15,14 +15,14 @@ include(flutter/flutter.cmake)
 # Add your source directory and the SDK directory to include paths
 include_directories(
         "src" # For sinosecu_wrapper.h
-        "${CMAKE_SOURCE_DIR}/libs/nativeLibs" # If IDCardRecog.h is used from here
+        "${CMAKE_SOURCE_DIR}/libs/nativeLibs"
 )
 
 # Define sources for the application executable
 set(SOURCES
         "main.cc"
         "my_application.cc"
-        "src/sinosecu_wrapper.cpp" # Your wrapper
+        "src/sinosecu_wrapper.cpp" # the c++ wrapper
         "${FLUTTER_APP_DIR}/generated_plugin_registrant.cc"
 )
 
@@ -42,12 +42,11 @@ target_link_libraries(${FLUTTER_PROJECT_NAME} PRIVATE PkgConfig::GTK)
 set(SINOSEC_SDK_LIB_DIR "${CMAKE_SOURCE_DIR}/libs/nativeLibs")
 
 # List the specific .so files from the SDK you need to link against
-# At a minimum, libIDCard.so. You might need others based on ldd output or SDK docs.
-# From your ls output, you also have libIDCardKernal.so, libCamDll.so etc.
+# At a minimum, libIDCard.so. You might need others based on SDK docs.
+#  you also have libIDCardKernal.so, libCamDll.so etc.
 # Start with libIDCard.so and add others if you get linking/runtime errors.
 set(SINOSEC_LIBS
         "${SINOSEC_SDK_LIB_DIR}/libIDCard.so"
-        # Add other .so files here if needed, for example:
         # "${SINOSEC_SDK_LIB_DIR}/libIDCardKernal.so"
         # "${SINOSEC_SDK_LIB_DIR}/libusb-1.0.so" # If SDK depends on it and it's not system-wide
 )
@@ -59,7 +58,7 @@ target_link_libraries(${FLUTTER_PROJECT_NAME} PRIVATE ${SINOSEC_LIBS})
 target_link_options(${FLUTTER_PROJECT_NAME} PRIVATE "-Wl,-rpath,'\$\$ORIGIN/libs/nativeLibs'")
 # **************************
 
-# Standard Flutter install rules (usually already there)
+
 install(TARGETS ${FLUTTER_PROJECT_NAME}
         RUNTIME DESTINATION bin
         BUNDLE DESTINATION .
