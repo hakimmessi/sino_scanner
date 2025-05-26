@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE IDCARD SYSTEM "IDCARD.dtd">
+<IDCARD>
+	<RegionInfo chnName="通用机读旅行证件" engName="Machine Readable Travel Documents" code="0"/>
+	<RegionInfo chnName="中国大陆证件" engName="China" code="1"/>
+	<RegionInfo chnName="港澳台证件" engName="HK,Macao and Taiwan Regions of China" code="2"/>
+	<RegionInfo chnName="马来西亚" engName="Malaysia" code="3"/>
+	<RegionInfo chnName="美国" engName="USA" code="4"/>
+	<RegionInfo chnName="新西兰" engName="New Zealand" code="5"/>
+	<RegionInfo chnName="新加坡" engName="Singapore" code="6"/>
+	<RegionInfo chnName="印度尼西亚" engName="Indonesia" code="7"/>
+	<RegionInfo chnName="泰国" engName="Thailand" code="8"/>
+	<RegionInfo chnName="墨西哥" engName="Mexico" code="9"/>
+	<RegionInfo chnName="瑞典" engName="Sweden" code="10"/>
+	<RegionInfo chnName="日本" engName="Japan" code="11"/>
+	<RegionInfo chnName="越南" engName="Vietnam" code="12"/>
+	<RegionInfo chnName="法国证件" engName="France" code="13"/>
+	<RegionInfo chnName="阿联酋" engName="United Arab Emirates" code="14"/>
+	<RegionInfo chnName="肯尼亚" engName="Kenya" code="16"/>
+	<RegionInfo chnName="埃及" engName="Egypt" code="15"/>
+	<RegionInfo chnName="卡塔尔" engName="Qatar" code="17"/>
+	<RegionInfo chnName="菲律宾" engName="Philippines" code="18"/>
+	<RegionInfo chnName="韩国" engName="Republic of Korea" code="19"/>
+	<RegionInfo chnName="智利" engName="Chile" code="20"/>
+</IDCARD>

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vecSVMClassfier>
+	<!-- <SVMClassfier SVMID="135001" imageType="1" sizeType="2" name="中国护照" dataPath="SVMDevice/135001"> -->
+		<!-- <ID subClassFierID="13259" mainID="13" subID="259" name="中国97-2版因私普通护照"/> -->
+		<!-- <ID subClassFierID="13260" mainID="13" subID="260" name="中国2012版因私普通护照"/> -->
+		<!-- <ID subClassFierID="13272" mainID="13" subID="272" name="中国97-2版公务护照"/> -->
+		<!-- <ID subClassFierID="13273" mainID="13" subID="273" name="中国2011版公务护照"/> -->
+		<!-- <ID subClassFierID="13275" mainID="13" subID="275" name="中国临时护照"/> -->
+		<!-- <ID subClassFierID="13288" mainID="13" subID="288" name="中国旅行证"/> -->
+	<!-- </SVMClassfier> -->
+	<!-- <SVMClassfier SVMID="135002" imageType="1" sizeType="2" name="护照" dataPath="SVMDevice/135002"> -->
+		<!-- <ID subClassFierID="13280" mainID="13" subID="280" name="台湾97-2版因私普通护照"/> -->
+		<!-- <ID subClassFierID="13281" mainID="13" subID="281" name="台湾2012版因私普通护照"/> -->
+	<!-- </SVMClassfier> -->
+</vecSVMClassfier>

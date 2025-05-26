@@ -1,0 +1,30 @@
+#ifndef SINOSECU_WRAPPER_H
+#define SINOSECU_WRAPPER_H
+
+#include <string> // For using std::string
+
+std::wstring string_to_wstring(const std::string& str);
+
+// declare the SDK functions
+// it tell the compiler that these functions are C-style functions
+
+extern "C" {
+    init InitIDCard(const wchar_t* IpUserID, int nType, const wchar_t* IpDirectory);
+    void FreeIDCard();
+}
+
+// this class will wrap the SDK methods
+class SinosecuScanner {
+public:
+    // this constructor is called when the object is created
+    SinosecuScanner();
+    // this destructor is called when the object is destroyed
+    ~SinosecuScanner();
+
+    // this method will initialize the SDK
+    // it will take standard C++ strings and an integer, then call the SDK's InitIDCard.
+    int initializeScanner(const std::string& userId, int nType, const std::string& sdkDirectory);
+    // this method will free the SDK
+    void releaseScanner();
+};
+#endif
