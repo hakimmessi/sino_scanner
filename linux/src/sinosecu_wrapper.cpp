@@ -1,6 +1,5 @@
 #include "runner/my_application.h"
 
-
 #include <flutter_linux/flutter_linux.h>
 #ifdef GDK_WINDOWING_X11
 #include <gdk/gdkx.h>
@@ -16,8 +15,8 @@
 static std::unique_ptr<SinosecuScanner> global_scanner_instance;
 
 
-const char APPLICATION_ID[] = "com.example.sino_scanner";
-
+static const char* APPLICATION_ID = "com.example.sino_scanner";
+static const char* CHANNEL_NAME = "com.example.sino_scanner";
 
 struct _MyApplication {
     GtkApplication parent_instance;
@@ -31,8 +30,6 @@ static FlMethodResponse* handle_platform_method_call(FlMethodChannel* channel, F
     const gchar* method_name = fl_method_call_get_name(method_call);
     FlValue* args = fl_method_call_get_args(method_call);
 
-    // Ensure our scanner instance exists for most calls.
-    // For "initializeScanner", we create it if it doesn't exist.
     if (strcmp(method_name, "initializeScanner") == 0) {
         if (!global_scanner_instance) {
             global_scanner_instance = std::make_unique<SinosecuScanner>();
@@ -40,7 +37,7 @@ static FlMethodResponse* handle_platform_method_call(FlMethodChannel* channel, F
     } else {
         // For other methods, if the instance doesn't exist or scanner isn't ready, return error.
         if (!global_scanner_instance) {
-            std::cerr << "C++ Error: global_scanner_instance is null for method " << method_name << std::endl;
+            std::cerr << "Linux side: global_scanner_instance is null for method " << method_name << std::endl;
             return FL_METHOD_RESPONSE(fl_method_error_response_new("SCANNER_NOT_READY", "Scanner instance not available.", nullptr));
         }
     }
@@ -49,7 +46,7 @@ static FlMethodResponse* handle_platform_method_call(FlMethodChannel* channel, F
 
     if (strcmp(method_name, "initializeScanner") == 0) {
         if (fl_value_get_type(args) != FL_VALUE_TYPE_MAP) {
-            std::cerr << "C++ Error: initializeScanner arguments are not a map." << std::endl;
+            std::cerr << "Linux side: initializeScanner arguments are not a map." << std::endl;
             return FL_METHOD_RESPONSE(fl_method_error_response_new("ARGUMENT_ERROR", "Expected map argument for initializeScanner", nullptr));
         }
 
@@ -60,18 +57,14 @@ static FlMethodResponse* handle_platform_method_call(FlMethodChannel* channel, F
         if (!user_id_value || fl_value_get_type(user_id_value) != FL_VALUE_TYPE_STRING ||
             !n_type_value || fl_value_get_type(n_type_value) != FL_VALUE_TYPE_INT || // Check for INT
             !sdk_dir_value || fl_value_get_type(sdk_dir_value) != FL_VALUE_TYPE_STRING) {
-            std::cerr << "C++ Error: Missing or incorrect argument types for initializeScanner." << std::endl;
-            // For debugging:
-            // if (user_id_value) std::cerr << "  userId type: " << fl_value_get_type(user_id_value) << std::endl; else std::cerr << "  userId missing" << std::endl;
-            // if (n_type_value) std::cerr << "  nType type: " << fl_value_get_type(n_type_value) << std::endl; else std::cerr << "  nType missing" << std::endl;
-            // if (sdk_dir_value) std::cerr << "  sdkDir type: " << fl_value_get_type(sdk_dir_value) << std::endl; else std::cerr << "  sdkDir missing" << std::endl;
+            std::cerr << "Linux side: Missing or incorrect argument types for initializeScanner." << std::endl;
             response = FL_METHOD_RESPONSE(fl_method_error_response_new("ARGUMENT_ERROR", "Invalid arguments for initializeScanner", nullptr));
         } else {
             const char* userId_cstr = fl_value_get_string(user_id_value);
-            int nType = fl_value_get_int(n_type_value); // Correctly get int
+            int nType = fl_value_get_int(n_type_value);
             const char* sdkDirectory_cstr = fl_value_get_string(sdk_dir_value);
 
-            std::cout << "C++ Platform: Calling initializeScanner with UserID: " << (userId_cstr ? userId_cstr : "NULL")
+            std::cout << "Linux side: Calling initializeScanner with UserID: " << (userId_cstr ? userId_cstr : "NULL")
                       << ", nType: " << nType
                       << ", Directory: " << (sdkDirectory_cstr ? sdkDirectory_cstr : "NULL") << std::endl;
 
@@ -79,18 +72,19 @@ static FlMethodResponse* handle_platform_method_call(FlMethodChannel* channel, F
             response = FL_METHOD_RESPONSE(fl_method_success_response_new(fl_value_new_int(result)));
         }
     } else if (strcmp(method_name, "releaseScanner") == 0) {
-        std::cout << "C++ Platform: Calling releaseScanner." << std::endl;
+        std::cout << "Linux side: Calling releaseScanner." << std::endl;
         if (global_scanner_instance) { // Check ensures it exists before calling
             global_scanner_instance->releaseScanner();
         }
         response = FL_METHOD_RESPONSE(fl_method_success_response_new(nullptr));
     } else if (strcmp(method_name, "detectDocument") == 0) {
-        std::cout << "C++ Platform: Calling detectDocumentOnScanner." << std::endl;
+        std::cout << "Linux side: Calling detectDocumentOnScanner." << std::endl;
         int result = global_scanner_instance->detectDocumentOnScanner();
         response = FL_METHOD_RESPONSE(fl_method_success_response_new(fl_value_new_int(result)));
     } else if (strcmp(method_name, "autoProcessDocument") == 0) {
-        std::cout << "C++ Platform: Calling autoProcessDocumentInScanner." << std::endl;
-        std::map<std::string, int> cpp_result_map = global_scanner_instance->autoProcessDocumentInScanner();
+        std::cout << "Linux side: Calling autoProcessDocument." << std::endl;
+
+        std::map<std::string, int> cpp_result_map = global_scanner_instance->autoProcessDocument();
 
         // Convert std::map<std::string, int> to FlValue (map type) for Dart
         g_autoptr(FlValue) return_value_map = fl_value_new_map();
@@ -101,12 +95,11 @@ static FlMethodResponse* handle_platform_method_call(FlMethodChannel* channel, F
         response = FL_METHOD_RESPONSE(fl_method_success_response_new(return_value_map));
     }
     else {
-        std::cout << "C++ Platform: Method not implemented: " << method_name << std::endl;
+        std::cout << "Linux side: Method not implemented: " << method_name << std::endl;
         response = FL_METHOD_RESPONSE(fl_method_not_implemented_response_new());
     }
     return response;
 }
-
 
 // Implements GApplication::activate.
 static void my_application_activate(GApplication* application) {
@@ -114,16 +107,8 @@ static void my_application_activate(GApplication* application) {
     GtkWindow* window =
             GTK_WINDOW(gtk_application_window_new(GTK_APPLICATION(application)));
 
-
-        // Use a header bar when running in GNOME as this is the common style used
-        // by applications and is the setup most users will be using (e.g. Ubuntu
-        // desktop).
-        // If running on X and not using GNOME then just use a traditional title bar
-        // in case the window manager does more exotic layout, e.g. tiling.
-        // If running on Wayland assume the header bar will work (may need changing
-        // if future cases occur).
     gboolean use_header_bar = TRUE;
-    #ifdef GDK_WINDOWING_X11
+#ifdef GDK_WINDOWING_X11
     GdkScreen* screen = gtk_window_get_screen(GTK_WINDOW(window));
     if (GDK_IS_X11_SCREEN(screen)) {
         const gchar* wm_name = gdk_x11_screen_get_window_manager_name(screen);
@@ -131,7 +116,7 @@ static void my_application_activate(GApplication* application) {
             use_header_bar = FALSE;
         }
     }
-    #endif
+#endif
     if (use_header_bar) {
         GtkHeaderBar* header_bar = GTK_HEADER_BAR(gtk_header_bar_new());
         gtk_widget_show(GTK_WIDGET(header_bar));
@@ -145,7 +130,6 @@ static void my_application_activate(GApplication* application) {
     gtk_window_set_default_size(GTK_WINDOW(window), 1280, 720);
     gtk_widget_show(GTK_WIDGET(window));
 
-
     g_autoptr(FlDartProject) project = fl_dart_project_new();
     fl_dart_project_set_dart_entrypoint_arguments(project, self->dart_entrypoint_arguments);
 
@@ -156,27 +140,34 @@ static void my_application_activate(GApplication* application) {
     // Register Flutter plugins
     fl_register_plugins(FL_PLUGIN_REGISTRY(view));
 
-    // Register our custom platform channel
-    // FlPluginRegistrar* registrar = fl_plugin_registry_get_registrar_for_plugin(FL_PLUGIN_REGISTRY(view), "SinoScannerChannel");
-    // The above line might be problematic if "SinoScannerChannel" isn't a formally registered plugin name.
-    // A more direct way to get a messenger for a simple, non-plugin channel:
-    FlMessageChannel* messenger = fl_plugin_registry_get_messenger(FL_PLUGIN_REGISTRY(view));
-
-
-    if (messenger == nullptr) { // Check if messenger is valid
-        std::cerr << "C++ Error: Could not get plugin messenger." << std::endl;
-    } else {
-        FlMethodChannel* channel = fl_method_channel_new(
-                messenger, // Use the direct messenger
-                APPLICATION_ID,
-                FL_STANDARD_METHOD_CODEC_GET_INSTANCE);
-
-        fl_method_channel_set_method_call_handler(channel, handle_platform_method_call,
-                                                  nullptr, // user_data for the handler
-                                                  nullptr  // destroy_notify for user_data
-        );
-        std::cout << "C++ Platform: SinoScanner platform channel registered successfully with name 'com.example.sino_scanner'." << std::endl;
+    // Register custom platform channel
+    FlEngine* engine = fl_view_get_engine(view);
+    if (engine == nullptr) {
+        std::cerr << "Linux side: Could not get Flutter engine." << std::endl;
+        return;
     }
+
+    g_autoptr(FlStandardMethodCodec) codec = fl_standard_method_codec_new();
+    FlMethodChannel* channel = fl_method_channel_new(
+            fl_engine_get_binary_messenger(engine),
+            CHANNEL_NAME,
+            FL_METHOD_CODEC(codec)
+    );
+
+    if (channel == nullptr) {
+        std::cerr << "Linux side: Failed to create method channel." << std::endl;
+        return;
+    }
+
+
+    fl_method_channel_set_method_call_handler(
+            channel,
+            handle_platform_method_call,
+            g_object_ref(self),
+            g_object_unref
+    );
+
+    std::cout << "Linux side: SinoScanner platform channel registered successfully with name '" << CHANNEL_NAME << "'." << std::endl;
 
     gtk_widget_grab_focus(GTK_WIDGET(view));
 }
@@ -208,7 +199,7 @@ static void my_application_startup(GApplication* application) {
 // Implements GApplication::shutdown.
 static void my_application_shutdown(GApplication* application) {
     if (global_scanner_instance) {
-        std::cout << "C++ Platform: Releasing scanner on application shutdown." << std::endl;
+        std::cout << "Linux side: Releasing scanner on application shutdown." << std::endl;
         global_scanner_instance->releaseScanner();
         global_scanner_instance.reset();
     }

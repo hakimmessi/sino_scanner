@@ -74,14 +74,26 @@ static FlMethodResponse* handle_platform_method_call(FlMethodChannel* channel, F
     return response;
 }
 
+// Update the method call handler signature to match FlMethodCallHandler type
+static void method_call_handler(FlMethodChannel* channel,
+                              FlMethodCall* method_call,
+                              gpointer user_data) {
+    FlMethodResponse* response = handle_platform_method_call(channel, method_call, user_data);
+    fl_method_call_respond(method_call, response, nullptr);
+}
 
 // Implements GApplication::activate.
 static void my_application_activate(GApplication* application) {
   MyApplication* self = MY_APPLICATION(application);
-  GtkWindow* window =
-      GTK_WINDOW(gtk_application_window_new(GTK_APPLICATION(application)));
+  
+  // Create the main window
+  GtkWindow* window = GTK_WINDOW(gtk_application_window_new(GTK_APPLICATION(application)));
+  if (window == nullptr) {
+    g_critical("Failed to create application window");
+    return;
+  }
 
-
+  // Configure window header bar based on environment
   gboolean use_header_bar = TRUE;
 #ifdef GDK_WINDOWING_X11
   GdkScreen* screen = gtk_window_get_screen(window);
@@ -92,49 +104,72 @@ static void my_application_activate(GApplication* application) {
     }
   }
 #endif
+
+  // Set up window title and header bar
   if (use_header_bar) {
     GtkHeaderBar* header_bar = GTK_HEADER_BAR(gtk_header_bar_new());
-    gtk_widget_show(GTK_WIDGET(header_bar));
-    gtk_header_bar_set_title(header_bar, "sino_scanner");
-    gtk_header_bar_set_show_close_button(header_bar, TRUE);
-    gtk_window_set_titlebar(window, GTK_WIDGET(header_bar));
+    if (header_bar) {
+      gtk_widget_show(GTK_WIDGET(header_bar));
+      gtk_header_bar_set_title(header_bar, "sino_scanner");
+      gtk_header_bar_set_show_close_button(header_bar, TRUE);
+      gtk_window_set_titlebar(window, GTK_WIDGET(header_bar));
+    }
   } else {
     gtk_window_set_title(window, "sino_scanner");
   }
 
+  // Configure window properties
   gtk_window_set_default_size(window, 1280, 720);
   gtk_widget_show(GTK_WIDGET(window));
 
+  // Set up Flutter project and view
   g_autoptr(FlDartProject) project = fl_dart_project_new();
+  if (project == nullptr) {
+    g_critical("Failed to create Flutter project");
+    return;
+  }
+  
   fl_dart_project_set_dart_entrypoint_arguments(project, self->dart_entrypoint_arguments);
 
   FlView* view = fl_view_new(project);
+  if (view == nullptr) {
+    g_critical("Failed to create Flutter view");
+    return;
+  }
+
   gtk_widget_show(GTK_WIDGET(view));
   gtk_container_add(GTK_CONTAINER(window), GTK_WIDGET(view));
 
+  // Register Flutter plugins
   fl_register_plugins(FL_PLUGIN_REGISTRY(view));
 
+  // Set up platform channel
+  FlPluginRegistrar* registrar = fl_plugin_registry_get_registrar_for_plugin(
+      FL_PLUGIN_REGISTRY(view), 
+      "SinoScannerChannel"
+  );
 
-    FlPluginRegistrar* registrar = fl_plugin_registry_get_registrar_for_plugin(FL_PLUGIN_REGISTRY(view), "SinoScannerChannel");
+  if (registrar == nullptr) {
+    g_critical("Failed to get plugin registrar for SinoScannerChannel");
+  } else {
+    FlMethodChannel* channel = fl_method_channel_new(
+        fl_plugin_registrar_get_messenger(registrar),
+        "com.example.sino_scanner",
+        fl_standard_method_codec_get_default()
+    );
 
-    if (registrar == nullptr) {
-        std::cerr << "Error: Could not get plugin registrar for SinoScannerChannel." << std::endl;
+    if (channel == nullptr) {
+      g_critical("Failed to create method channel");
     } else {
-        FlMethodChannel* channel = fl_method_channel_new(
-                fl_plugin_registrar_get_messenger(registrar),
-                "com.example.scanner/sinosecu",
-                FL_STANDARD_METHOD_CODEC_GET_INSTANCE);
-
-        fl_method_channel_set_method_call_handler(channel, handle_platform_method_call,
-                                                  nullptr,
-                                                  nullptr
-        );
-        std::cout << "SinoScanner platform channel registered." << std::endl;
-        // The channel is owned by the registrar, so we don't unref it here typically
-        // unless we were managing it manually with g_object_ref.
+      fl_method_channel_set_method_call_handler(channel,
+                                              method_call_handler,
+                                              nullptr,
+                                              nullptr);
+      g_debug("SinoScanner platform channel registered successfully");
     }
+  }
 
-    gtk_widget_grab_focus(GTK_WIDGET(view));
+  gtk_widget_grab_focus(GTK_WIDGET(view));
 }
 
 // Implements GApplication::local_command_line.

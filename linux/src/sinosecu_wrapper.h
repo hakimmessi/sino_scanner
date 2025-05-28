@@ -5,13 +5,14 @@
 
 std::wstring string_to_wstring(const std::string& str);
 
-
 extern "C" {
     int InitIDCard(const wchar_t* IpUserID, int nType, const wchar_t* IpDirectory);
     void FreeIDCard();
     int DetectDocument();
     int AutoProcessIDCard(int& nCardType);
 }
+
+#include <map>
 
 // this class will wrap the SDK methods
 class SinosecuScanner {
@@ -21,11 +22,9 @@ public:
     // this destructor is called when the object is destroyed
     ~SinosecuScanner();
 
-    // this method will initialize the SDK
-    // it will take standard C++ strings and an integer, then call the SDK's InitIDCard.
     int initializeScanner(const std::string& userId, int nType, const std::string& sdkDirectory);
     int detectDocumentOnScanner();
-    std::map<std::string, int> autoProcessDocumentInScanner();
+    std::map<std::string, int> autoProcessDocument();
     void releaseScanner();
 };
 #endif
