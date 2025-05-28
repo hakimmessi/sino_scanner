@@ -1,4 +1,5 @@
-#include "my_application.h"
+#include "runner/my_application.h"
+
 
 #include <flutter_linux/flutter_linux.h>
 #ifdef GDK_WINDOWING_X11
@@ -6,10 +7,10 @@
 #endif
 
 #include "flutter/generated_plugin_registrant.h"
-#include "src/sinosecu_wrapper.h" // C++ wrapper class header
-#include <memory>                // For std::unique_ptr
-#include <iostream>              // For std::cout, std::cerr
-#include <map>                   // For std::map (used by autoProcessDocumentInScanner)
+#include "src/sinosecu_wrapper.h"
+#include <memory>
+#include <iostream>
+#include <map>
 
 // Global instance of our scanner wrapper.
 static std::unique_ptr<SinosecuScanner> global_scanner_instance;

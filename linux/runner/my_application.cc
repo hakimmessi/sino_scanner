@@ -126,8 +126,8 @@ static void my_application_activate(GApplication* application) {
                 FL_STANDARD_METHOD_CODEC_GET_INSTANCE);
 
         fl_method_channel_set_method_call_handler(channel, handle_platform_method_call,
-                                                  nullptr, // user_data for the handler
-                                                  nullptr  // destroy_notify for user_data
+                                                  nullptr,
+                                                  nullptr
         );
         std::cout << "SinoScanner platform channel registered." << std::endl;
         // The channel is owned by the registrar, so we don't unref it here typically

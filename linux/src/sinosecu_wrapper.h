@@ -1,15 +1,13 @@
 #ifndef SINOSECU_WRAPPER_H
 #define SINOSECU_WRAPPER_H
 
-#include <string> // For using std::string
+#include <string>
 
 std::wstring string_to_wstring(const std::string& str);
 
-// declare the SDK functions
-// it tell the compiler that these functions are C-style functions
 
 extern "C" {
-    init InitIDCard(const wchar_t* IpUserID, int nType, const wchar_t* IpDirectory);
+    int InitIDCard(const wchar_t* IpUserID, int nType, const wchar_t* IpDirectory);
     void FreeIDCard();
     int DetectDocument();
     int AutoProcessIDCard(int& nCardType);
