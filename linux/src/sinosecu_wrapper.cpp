@@ -15,7 +15,7 @@
 static std::unique_ptr<SinosecuScanner> global_scanner_instance;
 
 
-static const char* APPLICATION_ID = "com.example.sino_scanner";
+static const   char* APPLICATION_ID = "com.example.sino_scanner";
 static const char* CHANNEL_NAME = "com.example.sino_scanner";
 
 struct _MyApplication {
