@@ -4,8 +4,8 @@
 #include <codecvt>
 
 std::wstring string_to_wstring(const std::string& str) {
-    std::wstring_convert<std::codecvt_utf8_utf16<wchar_t>> converter;
-    return converter.from_bytes(str);
+    std::wstring_convert<std::codecvt_utf8_utf16<wchar_t>> conv;
+    return conv.from_bytes(str);
 }
 
 SinosecuScanner::SinosecuScanner() : isInitialized(false) {}

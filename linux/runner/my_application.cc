@@ -14,9 +14,6 @@
 // Global instance of our scanner wrapper.
 static std::unique_ptr<SinosecuScanner> global_scanner_instance;
 
-static const char* APPLICATION_ID = "com.example.sino_scanner";
-static const char* CHANNEL_NAME = "com.example.sino_scanner";
-
 struct _MyApplication {
     GtkApplication parent_instance;
     char** dart_entrypoint_arguments;
@@ -156,7 +153,7 @@ static void my_application_activate(GApplication* application) {
 
     FlMethodChannel* channel = fl_method_channel_new(
             messenger,
-            CHANNEL_NAME,
+            "com.example.sino_scanner",
             FL_METHOD_CODEC(codec)
     );
 
@@ -169,18 +166,10 @@ static void my_application_activate(GApplication* application) {
     fl_method_channel_set_method_call_handler(
             channel,
             handle_platform_method_call,
-            g_object_ref(self),  // Pass proper user data
-            g_object_unref       // Proper cleanup function
+            g_object_ref(self),
+            g_object_unref
     );
 
-    if (!fl_method_channel_set_method_call_handler(
-            channel,
-            handle_platform_method_call,
-            g_object_ref(self),
-            g_object_unref)) {
-        std::cerr << "Linux side: Failed to set method call handler." << std::endl;
-        return;
-    }
 
     std::cout << "Linux side: SinoScanner platform channel registered successfully with name '" << CHANNEL_NAME << "'." << std::endl;
 
@@ -240,9 +229,9 @@ static void my_application_init(MyApplication* self) {
 }
 
 MyApplication* my_application_new() {
-    g_set_prgname(APPLICATION_ID);
+    g_set_prgname("com.example.sino_scanner");
     return MY_APPLICATION(g_object_new(my_application_get_type(),
-                                       "application-id", APPLICATION_ID,
+                                       "application-id", "com.example.sino_scanner",
                                        "flags", G_APPLICATION_NON_UNIQUE,
                                        nullptr));
 }
