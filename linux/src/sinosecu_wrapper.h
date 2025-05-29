@@ -3,6 +3,7 @@
 
 #include <string>
 
+// Utility function to convert std::string to std::wstring
 std::wstring string_to_wstring(const std::string& str);
 
 extern "C" {
@@ -26,5 +27,14 @@ public:
     int detectDocumentOnScanner();
     std::map<std::string, int> autoProcessDocument();
     void releaseScanner();
+
+    // Return values for error handling
+    static constexpr int SUCCESS = 0;
+    static constexpr int ERROR_INIT = -1;
+    static constexpr int ERROR_DETECT = -2;
+    static constexpr int ERROR_PROCESS = -3;
+
+private:
+    bool isInitialized;
 };
 #endif

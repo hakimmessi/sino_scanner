@@ -1,4 +1,5 @@
 #include "runner/my_application.h"
+#include "src/sinosecu_wrapper.h"
 
 #include <flutter_linux/flutter_linux.h>
 #ifdef GDK_WINDOWING_X11
@@ -6,7 +7,6 @@
 #endif
 
 #include "flutter/generated_plugin_registrant.h"
-#include "src/sinosecu_wrapper.h"
 #include <memory>
 #include <iostream>
 #include <map>
@@ -14,7 +14,6 @@
 // Global instance of our scanner wrapper.
 static std::unique_ptr<SinosecuScanner> global_scanner_instance;
 
-// Fix APPLICATION_ID declaration
 static const char* APPLICATION_ID = "com.example.sino_scanner";
 static const char* CHANNEL_NAME = "com.example.sino_scanner";
 
@@ -141,9 +140,19 @@ static void my_application_activate(GApplication* application) {
         return;
     }
 
+    fl_register_plugins(FL_PLUGIN_REGISTRY(view));
+
     g_autoptr(FlStandardMethodCodec) codec = fl_standard_method_codec_new();
-    g_autoptr(FlBinarymessenger) messenger = fl_engine_get_binary_messenger(engine);
-    g_autoptr(FlMethodChannel) channel = fl_method_channel_new(
+    if (codec == nullptr) {
+        std::cerr << "Linux side: Could not create standard method codec." << std::endl;
+        return;
+    }
+    g_autoptr(FlBinaryMessenger) messenger = fl_engine_get_binary_messenger(engine);
+    if (messenger == nullptr) {
+        std::cerr << "Linux side: Could not get binary messenger from Flutter engine." << std::endl;
+        return;
+    }
+    FlMethodChannel* channel = fl_method_channel_new(
             messenger,
             CHANNEL_NAME,
             FL_METHOD_CODEC(codec)
@@ -160,8 +169,6 @@ static void my_application_activate(GApplication* application) {
             g_object_ref(self),
             g_object_unref
     );
-
-    fl_method_channel_set_method_call_handler(channel, handle_platform_method_call, g_object_ref(self), g_object_unref);)
 
     std::cout << "Linux side: SinoScanner platform channel registered successfully with name '" << CHANNEL_NAME << "'." << std::endl;
 

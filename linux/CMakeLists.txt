@@ -111,6 +111,11 @@ install(DIRECTORY "${NATIVE_ASSETS_DIR}"
         DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
         COMPONENT Runtime)
 
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "^arm")
+    add_compile_definitions(ARM_BUILD)
+    # Add any ARM-specific compiler flags here
+endif()
+
 # Fully re-copy the assets directory on each build to avoid having stale files
 # from a previous install.
 set(FLUTTER_ASSET_DIR_NAME "flutter_assets")
