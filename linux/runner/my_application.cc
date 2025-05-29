@@ -1,5 +1,4 @@
 #include "runner/my_application.h"
-#include "src/sinosecu_wrapper.h"
 
 #include <flutter_linux/flutter_linux.h>
 #ifdef GDK_WINDOWING_X11
@@ -7,6 +6,7 @@
 #endif
 
 #include "flutter/generated_plugin_registrant.h"
+#include "src/sinosecu_wrapper.h"
 #include <memory>
 #include <iostream>
 #include <map>
@@ -53,7 +53,7 @@ static FlMethodResponse* handle_platform_method_call(FlMethodChannel* channel, F
         FlValue* sdk_dir_value = fl_value_lookup_string(args, "sdkDirectory");
 
         if (!user_id_value || fl_value_get_type(user_id_value) != FL_VALUE_TYPE_STRING ||
-            !n_type_value || fl_value_get_type(n_type_value) != FL_VALUE_TYPE_INT || // Check for INT
+            !n_type_value || fl_value_get_type(n_type_value) != FL_VALUE_TYPE_INT ||
             !sdk_dir_value || fl_value_get_type(sdk_dir_value) != FL_VALUE_TYPE_STRING) {
             std::cerr << "Linux side: Missing or incorrect argument types for initializeScanner." << std::endl;
             response = FL_METHOD_RESPONSE(fl_method_error_response_new("ARGUMENT_ERROR", "Invalid arguments for initializeScanner", nullptr));
@@ -71,7 +71,7 @@ static FlMethodResponse* handle_platform_method_call(FlMethodChannel* channel, F
         }
     } else if (strcmp(method_name, "releaseScanner") == 0) {
         std::cout << "Linux side: Calling releaseScanner." << std::endl;
-        if (global_scanner_instance) { // Check ensures it exists before calling
+        if (global_scanner_instance) {
             global_scanner_instance->releaseScanner();
         }
         response = FL_METHOD_RESPONSE(fl_method_success_response_new(nullptr));
@@ -85,7 +85,6 @@ static FlMethodResponse* handle_platform_method_call(FlMethodChannel* channel, F
 
         g_autoptr(FlValue) return_value_map = fl_value_new_map();
         for (const auto& pair : cpp_result_map) {
-            // Key is const char*, Value is FlValue*
             fl_value_set_string_take(return_value_map, pair.first.c_str(), fl_value_new_int(pair.second));
         }
         response = FL_METHOD_RESPONSE(fl_method_success_response_new(return_value_map));
@@ -133,6 +132,9 @@ static void my_application_activate(GApplication* application) {
     gtk_widget_show(GTK_WIDGET(view));
     gtk_container_add(GTK_CONTAINER(window), GTK_WIDGET(view));
 
+    // Register Flutter plugins
+    fl_register_plugins(FL_PLUGIN_REGISTRY(view));
+
     // Register custom platform channel
     FlEngine* engine = fl_view_get_engine(view);
     if (engine == nullptr) {
@@ -140,18 +142,18 @@ static void my_application_activate(GApplication* application) {
         return;
     }
 
-    fl_register_plugins(FL_PLUGIN_REGISTRY(view));
-
     g_autoptr(FlStandardMethodCodec) codec = fl_standard_method_codec_new();
     if (codec == nullptr) {
         std::cerr << "Linux side: Could not create standard method codec." << std::endl;
         return;
     }
-    g_autoptr(FlBinaryMessenger) messenger = fl_engine_get_binary_messenger(engine);
+
+    FlBinaryMessenger* messenger = fl_engine_get_binary_messenger(engine);
     if (messenger == nullptr) {
         std::cerr << "Linux side: Could not get binary messenger from Flutter engine." << std::endl;
         return;
     }
+
     FlMethodChannel* channel = fl_method_channel_new(
             messenger,
             CHANNEL_NAME,
@@ -163,11 +165,12 @@ static void my_application_activate(GApplication* application) {
         return;
     }
 
+    // Set method call handler with correct signature
     fl_method_channel_set_method_call_handler(
             channel,
             handle_platform_method_call,
-            g_object_ref(self),
-            g_object_unref
+            self,
+            nullptr
     );
 
     std::cout << "Linux side: SinoScanner platform channel registered successfully with name '" << CHANNEL_NAME << "'." << std::endl;
@@ -187,15 +190,14 @@ static gboolean my_application_local_command_line(GApplication* application, gch
         return TRUE;
     }
 
-    g_application_activate(application); // Activate the application
+    g_application_activate(application);
     *exit_status = 0;
 
-    return TRUE; // We handled the command line
+    return TRUE;
 }
 
 // Implements GApplication::startup.
 static void my_application_startup(GApplication* application) {
-    // Any initial setup for the application itself (not per-window)
     G_APPLICATION_CLASS(my_application_parent_class)->startup(application);
 }
 
