@@ -160,10 +160,7 @@ foreach(LIB ${SINOSEC_LIBS})
     if(EXISTS "${LIB}")
         target_link_libraries(${BINARY_NAME} PRIVATE
                 flutter
-                GTK::GTK
-                PkgConfig::GTK
-                ${CMAKE_DL_LIBS}
-        )
+                "${LIB}")
     else()
         message(WARNING "Library not found: ${LIB}")
     endif()
