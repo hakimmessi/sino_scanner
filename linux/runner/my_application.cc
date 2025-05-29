@@ -22,7 +22,7 @@ struct _MyApplication {
     char** dart_entrypoint_arguments;
 };
 
-G_DEFINE_TYPE(MyApplication, my_application, GTK_TYPE_APPLICATION)
+G_DEFINE_TYPE(MyApplication, my_application, GTK_TYPE_APPLICATION);
 
 // Platform Channel Method Call Handler
 static FlMethodResponse* handle_platform_method_call(FlMethodChannel* channel, FlMethodCall* method_call, gpointer user_data) {
@@ -169,9 +169,18 @@ static void my_application_activate(GApplication* application) {
     fl_method_channel_set_method_call_handler(
             channel,
             handle_platform_method_call,
-            self,
-            nullptr
+            g_object_ref(self),  // Pass proper user data
+            g_object_unref       // Proper cleanup function
     );
+
+    if (!fl_method_channel_set_method_call_handler(
+            channel,
+            handle_platform_method_call,
+            g_object_ref(self),
+            g_object_unref)) {
+        std::cerr << "Linux side: Failed to set method call handler." << std::endl;
+        return;
+    }
 
     std::cout << "Linux side: SinoScanner platform channel registered successfully with name '" << CHANNEL_NAME << "'." << std::endl;
 
