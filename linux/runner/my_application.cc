@@ -171,7 +171,7 @@ static void my_application_activate(GApplication* application) {
     );
 
 
-    std::cout << "Linux side: SinoScanner platform channel registered successfully with name '" << CHANNEL_NAME << "'." << std::endl;
+    std::cout << "Linux side: SinoScanner platform channel registered successfully." << std::endl;
 
     gtk_widget_grab_focus(GTK_WIDGET(view));
 }
