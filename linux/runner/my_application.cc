@@ -21,10 +21,8 @@ struct _MyApplication {
 
 G_DEFINE_TYPE(MyApplication, my_application, GTK_TYPE_APPLICATION);
 
-// Update the handler signature to match FlMethodChannelMethodCallHandler
-static void method_call_handler(FlMethodChannel* channel,
-                              FlMethodCall* method_call,
-                              gpointer user_data) {
+// Platform Channel Method Call Handler
+static FlMethodResponse* method_call_handler(FlMethodChannel* channel, FlMethodCall* method_call, gpointer user_data) {
     const gchar* method_name = fl_method_call_get_name(method_call);
     FlValue* args = fl_method_call_get_args(method_call);
 
@@ -35,8 +33,7 @@ static void method_call_handler(FlMethodChannel* channel,
     } else {
         if (!global_scanner_instance) {
             std::cerr << "Linux side: global_scanner_instance is null for method " << method_name << std::endl;
-            fl_method_call_respond(method_call, FL_METHOD_RESPONSE(fl_method_error_response_new("SCANNER_NOT_READY", "Scanner instance not available.", nullptr)), nullptr);
-            return;
+            return FL_METHOD_RESPONSE(fl_method_error_response_new("SCANNER_NOT_READY", "Scanner instance not available.", nullptr));
         }
     }
 
@@ -45,8 +42,7 @@ static void method_call_handler(FlMethodChannel* channel,
     if (strcmp(method_name, "initializeScanner") == 0) {
         if (fl_value_get_type(args) != FL_VALUE_TYPE_MAP) {
             std::cerr << "Linux side: initializeScanner arguments are not a map." << std::endl;
-            fl_method_call_respond(method_call, FL_METHOD_RESPONSE(fl_method_error_response_new("ARGUMENT_ERROR", "Expected map argument for initializeScanner", nullptr)), nullptr);
-            return;
+            return FL_METHOD_RESPONSE(fl_method_error_response_new("ARGUMENT_ERROR", "Expected map argument for initializeScanner", nullptr));
         }
 
         FlValue* user_id_value = fl_value_lookup_string(args, "userId");
@@ -94,11 +90,7 @@ static void method_call_handler(FlMethodChannel* channel,
         std::cout << "Linux side: Method not implemented: " << method_name << std::endl;
         response = FL_METHOD_RESPONSE(fl_method_not_implemented_response_new());
     }
-
-    // Update how we return the response
-    if (response) {
-        fl_method_call_respond(method_call, response, nullptr);
-    }
+    return response;
 }
 
 // Implements GApplication::activate.
@@ -170,11 +162,14 @@ static void my_application_activate(GApplication* application) {
         return;
     }
 
-    // Update how we set the method call handler
-    fl_method_channel_set_method_call_handler(channel,
-                                            method_call_handler,
-                                            g_object_ref(self),
-                                            g_object_unref);
+    // Set method call handler with correct signature
+    fl_method_channel_set_method_call_handler(
+            channel,
+            method_call_handler,
+            g_object_ref(self),
+            g_object_unref
+    );
+
 
     std::cout << "Linux side: SinoScanner platform channel registered successfully." << std::endl;
 

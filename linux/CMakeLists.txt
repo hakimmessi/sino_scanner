@@ -166,16 +166,16 @@ foreach(LIB ${SINOSEC_LIBS})
     endif()
 endforeach()
 
-# Set RPATH for SDK libraries
+# Set RPATH for SDK libraries - simplified to just look in lib directory
 set_target_properties(${BINARY_NAME} PROPERTIES
-        INSTALL_RPATH "$ORIGIN/lib:$ORIGIN/libs/nativeLibs"
+        INSTALL_RPATH "$ORIGIN/lib"
         BUILD_WITH_INSTALL_RPATH TRUE
 )
 
-# Install SDK libraries and dependencies
+# Install SDK libraries directly to the main lib directory (not nested)
 if(EXISTS "${SINOSEC_SDK_LIB_DIR}")
     install(DIRECTORY "${SINOSEC_SDK_LIB_DIR}/"
-            DESTINATION "${INSTALL_BUNDLE_LIB_DIR}/libs/nativeLibs"
+            DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
             FILES_MATCHING
             PATTERN "*.so*"
             PATTERN "*.dat"
