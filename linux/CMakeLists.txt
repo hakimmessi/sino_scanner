@@ -186,3 +186,52 @@ if(EXISTS "${SINOSEC_SDK_LIB_DIR}")
             PATTERN "*.h" EXCLUDE
     )
 endif()
+
+# *** Fix Architecture Mismatch Issues ***
+if(IS_ARM64)
+    message(STATUS "Applying ARM64 fixes for SDK libraries...")
+
+    # Libraries that need to be excluded or replaced on ARM64
+    set(X86_ONLY_LIBS
+            "libpng15.so.15.13.0"  # This is x86-64, use system version
+            # Add other x86-64 libraries here if found
+    )
+
+    # Use system libraries for architecture-specific dependencies
+    find_package(PNG REQUIRED)
+    if(PNG_FOUND)
+        message(STATUS "Using system PNG library instead of bundled x86-64 version")
+        target_link_libraries(${BINARY_NAME} PRIVATE PNG::PNG)
+    endif()
+
+    # Install SDK libraries but exclude x86-64 ones
+    install(DIRECTORY "${SINOSEC_SDK_LIB_DIR}/"
+            DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
+            FILES_MATCHING
+            PATTERN "*.so*"
+            PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE
+            GROUP_READ GROUP_EXECUTE
+            WORLD_READ WORLD_EXECUTE
+    )
+
+    # Remove x86-64 libraries after installation
+    foreach(X86_LIB ${X86_ONLY_LIBS})
+        install(CODE "
+            if(EXISTS \"${INSTALL_BUNDLE_LIB_DIR}/${X86_LIB}\")
+                file(REMOVE \"${INSTALL_BUNDLE_LIB_DIR}/${X86_LIB}\")
+                message(STATUS \"Removed x86-64 library: ${X86_LIB}\")
+            endif()
+        ")
+    endforeach()
+
+else()
+    # For x86-64 builds, install all libraries normally
+    install(DIRECTORY "${SINOSEC_SDK_LIB_DIR}/"
+            DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
+            FILES_MATCHING
+            PATTERN "*.so*"
+            PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE
+            GROUP_READ GROUP_EXECUTE
+            WORLD_READ WORLD_EXECUTE
+    )
+endif()
