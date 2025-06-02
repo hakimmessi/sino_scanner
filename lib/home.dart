@@ -59,7 +59,7 @@ class _HomeScreenState extends State<HomeScreen> {
     const int nType = 0;
 
     // TODO: IMPORTANT: Verify sdkDirectory.
-    const String sdkDirectory = "/home/kinektek/sino_scanner/libs/nativeLibs";
+    const String sdkDirectory = "/home/kinektek/sino_scanner/build/linux/arm64/release/bundle/lib";
 
     int initResult = await SinosecuReader.initializeScanner(
       userId: userId,
