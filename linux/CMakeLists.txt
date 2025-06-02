@@ -151,8 +151,8 @@ endif()
 set(SINOSEC_LIBS
         "${SINOSEC_SDK_LIB_DIR}/libIDCard.so"
         # Add other libraries as needed:
-        # "${SINOSEC_SDK_LIB_DIR}/libIDCardKernal.so"
-        # "${SINOSEC_SDK_LIB_DIR}/libCamDll.so"
+        "${SINOSEC_SDK_LIB_DIR}/libIDCardKernal.so"
+         "${SINOSEC_SDK_LIB_DIR}/libCamDll.so"
 )
 
 # Link SDK libraries to the binary
