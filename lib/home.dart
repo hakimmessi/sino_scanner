@@ -1,6 +1,4 @@
 // path: lib/screens/home_screen.dart
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import '../services/sinosecuReader.dart'; // Corrected import path
@@ -39,92 +37,51 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _initializeScanner() async {
-    try {
+    setState(() {
+      _statusText = 'Initializing scanner...';
+      _isScannerInitialized = false;
+      _recognitionResult = null;
+    });
+
+    // --- Configuration for initializeScanner ---
+    const String userId = "426911010110763248";
+
+    // TODO: IMPORTANT: Verify nType.
+    // For general document recognition, 0 might be a default or for business cards.
+    // Refer to SDK documentation (section 3.1.1.1) for the correct value for your needs.
+    // this example below are from the SDK docs,
+    // 1: Authorization ID is incorrect
+    // 2: Device initialization is failed
+    // 3: Recognition engine initialization is failed
+    // 4: Authorization files are not found
+    // 5: Recognition engine is failed to load templates
+    // 6: Chip reader initialization is failed
+    const int nType = 0;
+
+    // TODO: IMPORTANT: Verify sdkDirectory.
+    const String sdkDirectory = "/home/kinektek/sino_scanner/libs/nativeLibs";
+
+    int initResult = await SinosecuReader.initializeScanner(
+      userId: userId,
+      nType: nType,
+      sdkDirectory: sdkDirectory,
+    );
+
+    if (initResult == 0) { // SDK: 0 is success for InitIDCard
       setState(() {
-        _statusText = 'Initializing scanner...';
-        _isScannerInitialized = false;
-        _recognitionResult = null;
+        _statusText = 'Scanner initialized! Ready to detect.';
+        _isScannerInitialized = true;
       });
-
-      // Configuration constants
-      const String userId = "426911010110763248";
-      const int nType = 0;
-      const String sdkDirectory = "/home/kinektek/sino_scanner/libs/nativeLibs";
-
-      // Check if SDK directory exists
-      if (!await Directory(sdkDirectory).exists()) {
-        setState(() {
-          _statusText = 'Error: SDK directory not found';
-          _isScannerInitialized = false;
-        });
-        print('[Flutter] SDK directory not found: $sdkDirectory');
-        return;
-      }
-
-      // Check for required SDK files
-      final requiredFiles = [
-        'libIDCard.so',
-        'libIDCardKernal.so',
-        'libCamDll.so'
-      ];
-
-      for (final file in requiredFiles) {
-        if (!await File('$sdkDirectory/$file').exists()) {
-          setState(() {
-            _statusText = 'Error: Required SDK file missing: $file';
-            _isScannerInitialized = false;
-          });
-          print('[Flutter] Missing SDK file: $file');
-          return;
-        }
-      }
-
-      print('[Flutter] Initializing scanner with:');
-      print('[Flutter] - UserID: $userId');
-      print('[Flutter] - nType: $nType');
-      print('[Flutter] - SDK Directory: $sdkDirectory');
-
-      final int initResult = await SinosecuReader.initializeScanner(
-        userId: userId,
-        nType: nType,
-        sdkDirectory: sdkDirectory,
-      );
-
-      // Map error codes to messages
-      final errorMessages = {
-        1: 'Authorization ID incorrect',
-        2: 'Device initialization failed',
-        3: 'Recognition engine initialization failed',
-        4: 'Authorization files not found',
-        5: 'Recognition engine failed to load templates',
-        6: 'Chip reader initialization failed'
-      };
-
-      if (initResult == 0) {
-        print('[Flutter] Scanner initialized successfully');
-        setState(() {
-          _statusText = 'Scanner initialized! Ready to detect.';
-          _isScannerInitialized = true;
-        });
-      } else {
-        final errorMsg = errorMessages[initResult] ?? 'Unknown error';
-        print('[Flutter] Scanner initialization failed: $errorMsg (code: $initResult)');
-        setState(() {
-          _statusText = 'Scanner initialization failed:\n$errorMsg\nCode: $initResult';
-          _isScannerInitialized = false;
-        });
-      }
-
-    } catch (e, stackTrace) {
-      print('[Flutter] Exception during scanner initialization:');
-      print('[Flutter] Error: $e');
-      print('[Flutter] Stack trace: $stackTrace');
+      // Optionally, automatically attempt detection after successful initialization
+      //await _detectAndProcessDocument();
+    } else {
       setState(() {
-        _statusText = 'Error initializing scanner: $e';
+        _statusText = 'Scanner failed to initialize. Code: $initResult\n(Refer to SDK docs for error codes)';
         _isScannerInitialized = false;
       });
     }
   }
+
   Future<void> _detectAndProcessDocument() async {
     if (!_isScannerInitialized) {
       setState(() {
