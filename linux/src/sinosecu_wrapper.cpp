@@ -11,14 +11,10 @@ std::wstring string_to_wstring(const std::string& str) {
 SinosecuScanner::SinosecuScanner() : isInitialized(false) {}
 
 SinosecuScanner::~SinosecuScanner() {
-    std::cout << "Destroying scanner..." << std::endl;
     releaseScanner();
-    std::cout << "Scanner destroyed." << std::endl;
 }
 
 int SinosecuScanner::initializeScanner(const std::string& userId, int nType, const std::string& sdkDirectory) {
-    if (!std::filesystem::exists(sdkDirectory)) {
-        return ERROR_INIT;
     if (isInitialized) {
         releaseScanner();
     }
