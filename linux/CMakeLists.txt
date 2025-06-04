@@ -2,11 +2,9 @@
 cmake_minimum_required(VERSION 3.13)
 project(runner LANGUAGES CXX)
 
-# The name of the executable created for the application. Change this to change
-# the on-disk name of your application.
+# The name of the executable created for the application.
 set(BINARY_NAME "sino_scanner")
-# The unique GTK application identifier for this application. See:
-# https://wiki.gnome.org/HowDoI/ChooseApplicationID
+# The unique GTK application identifier for this application.
 set(APPLICATION_ID "com.kinektek.sino_scanner")
 
 # Explicitly opt in to modern CMake behaviors to avoid warnings with recent
@@ -35,10 +33,6 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
 endif()
 
 # Compilation settings that should be applied to most targets.
-#
-# Be cautious about adding new options here, as plugins use this function by
-# default. In most cases, you should add new options to specific targets instead
-# of modifying this function.
 function(APPLY_STANDARD_SETTINGS TARGET)
     target_compile_features(${TARGET} PUBLIC cxx_std_14)
     target_compile_options(${TARGET} PRIVATE -Wall -Werror)
@@ -62,9 +56,7 @@ add_subdirectory("runner")
 add_dependencies(${BINARY_NAME} flutter_assemble)
 
 # Only the install-generated bundle's copy of the executable will launch
-# correctly, since the resources must in the right relative locations. To avoid
-# people trying to run the unbundled copy, put it in a subdirectory instead of
-# the default top-level location.
+# correctly, since the resources must in the right relative locations.
 set_target_properties(${BINARY_NAME}
         PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/intermediates_do_not_run"
@@ -75,8 +67,7 @@ set_target_properties(${BINARY_NAME}
 include(flutter/generated_plugins.cmake)
 
 # === Installation ===
-# By default, "installing" just makes a relocatable bundle in the build
-# directory.
+# By default, "installing" just makes a relocatable bundle in the build directory.
 set(BUILD_BUNDLE_DIR "${PROJECT_BINARY_DIR}/bundle")
 if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
     set(CMAKE_INSTALL_PREFIX "${BUILD_BUNDLE_DIR}" CACHE PATH "..." FORCE)
@@ -111,9 +102,9 @@ install(DIRECTORY "${NATIVE_ASSETS_DIR}"
         DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
         COMPONENT Runtime)
 
+# ARM-specific definitions
 if(CMAKE_SYSTEM_PROCESSOR MATCHES "^arm")
     add_compile_definitions(ARM_BUILD)
-    # Add any ARM-specific compiler flags here
 endif()
 
 # Fully re-copy the assets directory on each build to avoid having stale files
@@ -131,49 +122,72 @@ if(NOT CMAKE_BUILD_TYPE MATCHES "Debug")
             COMPONENT Runtime)
 endif()
 
-# *** Custom sources for your application ***
+# === PNG Wrapper Configuration ===
+message(STATUS "Configuring PNG Wrapper for libIDCard.so compatibility...")
+
+# Find required packages
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(PNG REQUIRED libpng)
+
+# Add PNG wrapper sources to the binary
 target_sources(${BINARY_NAME}
         PRIVATE
-        runner/main.cc
-        runner/my_application.cc
         src/sinosecu_wrapper.cpp
+        src/png_wrapper.cpp  # Add PNG wrapper
 )
 
-# *** Sinosecu SDK Linking ***
-set(SINOSEC_SDK_LIB_DIR "${CMAKE_CURRENT_SOURCE_DIR}/libs/nativeLibs")
+# Add PNG wrapper include directories
+target_include_directories(${BINARY_NAME} PRIVATE
+        ${PNG_INCLUDE_DIRS}
+        src/  # For png_wrapper.h and sinosecu_wrapper.h
+)
+
+# Link PNG wrapper dependencies
+target_link_libraries(${BINARY_NAME} PRIVATE
+        ${PNG_LIBRARIES}
+        dl  # Required for dlopen/dlsym
+)
+
+# Add PNG wrapper compile definitions
+target_compile_definitions(${BINARY_NAME} PRIVATE
+        ${PNG_CFLAGS_OTHER}
+        PNG_WRAPPER_ENABLED=1
+)
+
+# Ensure PNG wrapper has higher priority than static PNG in libIDCard.so
+set_target_properties(${BINARY_NAME} PROPERTIES
+        LINK_FLAGS "-Wl,--export-dynamic -Wl,--as-needed"
+)
+
+# === Sinosecu SDK Integration ===
+set(SINOSEC_SDK_LIB_DIR "${CMAKE_CURRENT_SOURCE_DIR}/linux/libs/nativeLibs")
 
 # Check if the SDK directory exists
 if(NOT EXISTS "${SINOSEC_SDK_LIB_DIR}")
     message(WARNING "Sinosecu SDK directory not found: ${SINOSEC_SDK_LIB_DIR}")
-endif()
+else()
+    message(STATUS "Found Sinosecu SDK at: ${SINOSEC_SDK_LIB_DIR}")
 
-# List the SDK libraries
-set(SINOSEC_LIBS
-        "${SINOSEC_SDK_LIB_DIR}/libIDCard.so"
-        # Add other libraries as needed:
-        "${SINOSEC_SDK_LIB_DIR}/libIDCardKernal.so"
-         "${SINOSEC_SDK_LIB_DIR}/libCamDll.so"
-)
+    # List the SDK libraries
+    set(SINOSEC_LIBS
+            "${SINOSEC_SDK_LIB_DIR}/libIDCard.so"
+            # Add other libraries as needed:
+            "${SINOSEC_SDK_LIB_DIR}/libIDCardKernal.so"
+            "${SINOSEC_SDK_LIB_DIR}/libCamDll.so"
+    )
 
-# Link SDK libraries to the binary
-foreach(LIB ${SINOSEC_LIBS})
-    if(EXISTS "${LIB}")
-        target_link_libraries(${BINARY_NAME} PRIVATE
-                flutter
-                "${LIB}")
-    else()
-        message(WARNING "Library not found: ${LIB}")
-    endif()
-endforeach()
+    # CRITICAL: Link SDK libraries AFTER PNG wrapper
+    # This ensures PNG wrapper symbols override libIDCard.so symbols
+    foreach(LIB ${SINOSEC_LIBS})
+        if(EXISTS "${LIB}")
+            target_link_libraries(${BINARY_NAME} PRIVATE "${LIB}")
+            message(STATUS "Linking SDK library: ${LIB}")
+        else()
+            message(WARNING "Library not found: ${LIB}")
+        endif()
+    endforeach()
 
-# Set RPATH for SDK libraries - simplified to just look in lib directory
-set_target_properties(${BINARY_NAME} PROPERTIES
-        INSTALL_RPATH "$ORIGIN/lib"
-        BUILD_WITH_INSTALL_RPATH TRUE
-)
-
-# Install SDK libraries directly to the main lib directory (not nested)
-if(EXISTS "${SINOSEC_SDK_LIB_DIR}")
+    # Install SDK libraries to bundle lib directory
     install(DIRECTORY "${SINOSEC_SDK_LIB_DIR}/"
             DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
             FILES_MATCHING
@@ -182,56 +196,5 @@ if(EXISTS "${SINOSEC_SDK_LIB_DIR}")
             PATTERN "*.xml"
             PATTERN "*.ini"
             PATTERN "*.txt"
-            PATTERN "*.cpp" EXCLUDE
-            PATTERN "*.h" EXCLUDE
-    )
-endif()
-
-# *** Fix Architecture Mismatch Issues ***
-if(IS_ARM64)
-    message(STATUS "Applying ARM64 fixes for SDK libraries...")
-
-    # Libraries that need to be excluded or replaced on ARM64
-    set(X86_ONLY_LIBS
-            "libpng15.so.15.13.0"  # This is x86-64, use system version
-            # Add other x86-64 libraries here if found
-    )
-
-    # Use system libraries for architecture-specific dependencies
-    find_package(PNG REQUIRED)
-    if(PNG_FOUND)
-        message(STATUS "Using system PNG library instead of bundled x86-64 version")
-        target_link_libraries(${BINARY_NAME} PRIVATE PNG::PNG)
-    endif()
-
-    # Install SDK libraries but exclude x86-64 ones
-    install(DIRECTORY "${SINOSEC_SDK_LIB_DIR}/"
-            DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
-            FILES_MATCHING
-            PATTERN "*.so*"
-            PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE
-            GROUP_READ GROUP_EXECUTE
-            WORLD_READ WORLD_EXECUTE
-    )
-
-    # Remove x86-64 libraries after installation
-    foreach(X86_LIB ${X86_ONLY_LIBS})
-        install(CODE "
-            if(EXISTS \"${INSTALL_BUNDLE_LIB_DIR}/${X86_LIB}\")
-                file(REMOVE \"${INSTALL_BUNDLE_LIB_DIR}/${X86_LIB}\")
-                message(STATUS \"Removed x86-64 library: ${X86_LIB}\")
-            endif()
-        ")
-    endforeach()
-
-else()
-    # For x86-64 builds, install all libraries normally
-    install(DIRECTORY "${SINOSEC_SDK_LIB_DIR}/"
-            DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
-            FILES_MATCHING
-            PATTERN "*.so*"
-            PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE
-            GROUP_READ GROUP_EXECUTE
-            WORLD_READ WORLD_EXECUTE
     )
 endif()
