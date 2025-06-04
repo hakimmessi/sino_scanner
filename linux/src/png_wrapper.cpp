@@ -387,6 +387,7 @@ int read_png_file2(CDib* dib, char* filename) {
 }
 
 // Keep the low-level PNG function overrides as fallback
+/*
 png_structp png_create_read_struct(png_const_charp user_png_ver,
                                    png_voidp error_ptr,
                                    png_error_ptr error_fn,
@@ -435,6 +436,6 @@ void png_destroy_read_struct(png_structpp png_ptr_ptr,
     if (func && png_ptr_ptr && *png_ptr_ptr) {
         func(png_ptr_ptr, info_ptr_ptr, end_info_ptr_ptr);
     }
-}
+} */
 
 } // extern "C"

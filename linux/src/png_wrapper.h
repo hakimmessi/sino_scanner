@@ -76,7 +76,7 @@ int read_png_file2(CDib* dib, char* filename);
 // ================================
 // LOW-LEVEL FUNCTION OVERRIDES (FALLBACK)
 // ================================
-
+/*
 png_structp png_create_read_struct(png_const_charp user_png_ver,
                                    png_voidp error_ptr,
                                    png_error_ptr error_fn,
@@ -91,7 +91,7 @@ void png_destroy_read_struct(png_structpp png_ptr_ptr,
 // Add other critical PNG functions as needed
 void png_read_info(png_structrp png_ptr, png_inforp info_ptr);
 void png_read_image(png_structrp png_ptr, png_bytepp image);
-void png_read_end(png_structrp png_ptr, png_inforp info_ptr);
+void png_read_end(png_structrp png_ptr, png_inforp info_ptr); */
 }
 
 #endif //SINO_SCANNER_PNG_WRAPPER_H
