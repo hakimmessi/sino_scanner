@@ -34,7 +34,7 @@ endif()
 
 # Compilation settings that should be applied to most targets.
 function(APPLY_STANDARD_SETTINGS TARGET)
-    target_compile_features(${TARGET} PUBLIC cxx_std_14)
+    target_compile_features(${TARGET} PUBLIC cxx_std_20)
     target_compile_options(${TARGET} PRIVATE -Wall -Werror)
     target_compile_options(${TARGET} PRIVATE "$<$<NOT:$<CONFIG:Debug>>:-O3>")
     target_compile_definitions(${TARGET} PRIVATE "$<$<NOT:$<CONFIG:Debug>>:NDEBUG>")
@@ -160,7 +160,7 @@ set_target_properties(${BINARY_NAME} PROPERTIES
 )
 
 # === Sinosecu SDK Integration ===
-set(SINOSEC_SDK_LIB_DIR "${CMAKE_CURRENT_SOURCE_DIR}/linux/libs/nativeLibs")
+set(SINOSEC_SDK_LIB_DIR "${CMAKE_CURRENT_SOURCE_DIR}/libs/nativeLibs")
 
 # Check if the SDK directory exists
 if(NOT EXISTS "${SINOSEC_SDK_LIB_DIR}")
