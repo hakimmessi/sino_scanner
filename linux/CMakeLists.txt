@@ -103,9 +103,13 @@ install(DIRECTORY "${NATIVE_ASSETS_DIR}"
         COMPONENT Runtime)
 
 # ARM-specific definitions
-if(CMAKE_SYSTEM_PROCESSOR MATCHES "^arm")
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "^arm" OR CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64")
     add_compile_definitions(ARM_BUILD)
+    message(STATUS "ARM build detected - CMAKE_SYSTEM_PROCESSOR: ${CMAKE_SYSTEM_PROCESSOR}")
+else()
+    message(STATUS "Non-ARM build - CMAKE_SYSTEM_PROCESSOR: ${CMAKE_SYSTEM_PROCESSOR}")
 endif()
+
 
 # Fully re-copy the assets directory on each build to avoid having stale files
 # from a previous install.

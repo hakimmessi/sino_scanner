@@ -40,11 +40,13 @@ bool SinosecuScanner::validateInitialization() {
 
 int SinosecuScanner::initializeScanner(const std::string& userId, int nType, const std::string& sdkDirectory) {
     std::cout << "=== SinosecuScanner::initializeScanner ===" << std::endl;
-    std::cout << "Architecture: " <<
-              #ifdef ARM_BUILD
-              "ARM64"
-              #else
-              "x86/x64"
+    std::cout << "Architecture: "
+                 #ifdef __aarch64__
+                 "ARM64"
+                 #elif defined(__x86_64__) || defined(_M_X64)
+                 "x86/x64"
+                 #else
+                 "Unknown"
               #endif
               << std::endl;
 

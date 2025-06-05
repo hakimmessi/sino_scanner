@@ -56,7 +56,7 @@ class _HomeScreenState extends State<HomeScreen> {
     // 4: Authorization files are not found
     // 5: Recognition engine is failed to load templates
     // 6: Chip reader initialization is failed
-    const int nType = 0;
+    const int nType = 1;
 
     // TODO: IMPORTANT: Verify sdkDirectory.
     const String sdkDirectory = "/home/kinektek/sino_scanner/build/linux/arm64/release/bundle/lib";
