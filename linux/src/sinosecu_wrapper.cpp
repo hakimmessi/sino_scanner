@@ -419,7 +419,7 @@ bool SinosecuScanner::loadConfigurationFile() {
 
         // Try to load the config file
         std::cout << "Loading configuration from: " << configPath << std::endl;
-        int result = loadConfiguration(configPath);
+        int result = loadConfigurationFile(configPath);
 
         if (result == 0) {
             std::cout << "Configuration file loaded successfully!" << std::endl;
