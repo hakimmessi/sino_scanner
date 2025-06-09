@@ -99,6 +99,7 @@ int SinosecuScanner::initializeScanner(const std::string& userId, int nType, con
             sdkPath = sdkDirectory;
             std::cout << "SDK initialized successfully!" << std::endl;
 
+            // Try to load configuration file instead of manual configuration
             if (!loadConfigurationFile()) {
                 setLastError("Failed to load configuration file");
                 releaseScanner();
@@ -393,6 +394,33 @@ std::string SinosecuScanner::getDocumentName() {
     return "";
 }
 
+int SinosecuScanner::loadConfiguration(const std::string& configPath) {
+    if (!validateInitialization()) {
+        return ERROR_INIT;
+    }
+
+    if (!std::filesystem::exists(configPath)) {
+        setLastError("Configuration file does not exist: " + configPath);
+        return ERROR_CONFIG;
+    }
+
+    try {
+        std::wstring wConfigPath = string_to_wstring(configPath);
+        int result = SetConfigByFile(wConfigPath.c_str());
+
+        if (result == 0) {
+            std::cout << "Configuration loaded successfully from: " << configPath << std::endl;
+        } else {
+            setLastError("Failed to load configuration. Result: " + std::to_string(result));
+        }
+
+        return result;
+    } catch (const std::exception& e) {
+        setLastError("Exception loading configuration: " + std::string(e.what()));
+        return ERROR_CONFIG;
+    }
+}
+
 bool SinosecuScanner::loadConfigurationFile() {
     try {
         // Construct config file path
@@ -419,7 +447,7 @@ bool SinosecuScanner::loadConfigurationFile() {
 
         // Try to load the config file
         std::cout << "Loading configuration from: " << configPath << std::endl;
-        int result = loadConfigurationFile(configPath);
+        int result = loadConfiguration(configPath);
 
         if (result == 0) {
             std::cout << "Configuration file loaded successfully!" << std::endl;

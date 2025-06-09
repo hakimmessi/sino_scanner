@@ -187,7 +187,7 @@ static void method_call_handler(FlMethodChannel* channel,
             } else {
                 const char* configPath_cstr = fl_value_get_string(config_path_value);
                 std::cout << "Linux side: Loading configuration from: " << configPath_cstr << std::endl;
-                int result = global_scanner_instance->loadConfigurationFile(std::string(configPath_cstr));
+                int result = global_scanner_instance->loadConfiguration(std::string(configPath_cstr));
                 response = FL_METHOD_RESPONSE(fl_method_success_response_new(fl_value_new_int(result)));
             }
         }
