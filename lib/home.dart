@@ -93,7 +93,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
     try {
       // The scanning workflow
-      Map<String, dynamic> result = await SinosecuReader.scanDocumentComplete(60); // 30 second timeout
+      Map<String, dynamic> result = await SinosecuReader.scanDocumentComplete(20); // 30 second timeout
 
       if (result.containsKey('error')) {
         setState(() {
@@ -202,10 +202,6 @@ class _HomeScreenState extends State<HomeScreen> {
                 width: 100,
                 height: 100,
                 padding: const EdgeInsets.all(15),
-                decoration: BoxDecoration(
-                  color: Colors.grey[200],
-                  shape: BoxShape.circle,
-                ),
                 child: SvgPicture.asset(
                   'assets/icon_scan.svg',
                   width: 60,
