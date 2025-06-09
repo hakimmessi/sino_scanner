@@ -27,18 +27,25 @@ int GetFieldNameEx(int nAttribute, int nIndex, wchar_t* lpBuffer, int& nBufferLe
 int GetRecogResultEx(int nAttribute, int nIndex, wchar_t* lpBuffer, int& nBufferLen);
 int GetResultTypeEx(int nAttribute, int nIndex);
 int GetFieldConfEx(int nAttribute, int nIndex);
+int GetIDCardName(wchar_t* lpBuffer, int& nBufferLen);
 
 // Device status
 int CheckDeviceOnlineEx();
 
-// Configuration
+// Configuration functions
 int SetConfigByFile(const wchar_t* lpConfigFile);
+int SetLanguage(int nLangType);
+void SetSaveImageType(int nImageType);
+void SetRecogVIZ(bool bRecogVIZ);
+void SetRecogDG(int nDG);
+void ResetIDCardID();
+int AddIDCardID(int nMainID, int nSubID[], int nSubIDCount);
 
 // Image saving
 int SaveImageEx(const wchar_t* lpFileName, int nType);
 }
 
-// Enhanced wrapper class
+
 class SinosecuScanner {
 public:
     SinosecuScanner();
@@ -50,11 +57,15 @@ public:
     std::map<std::string, int> autoProcessDocument();
     void releaseScanner();
 
-    // Enhanced functionality
     int checkDeviceStatus();
     std::map<std::string, std::string> getDocumentFields(int attribute = 1); // 1 = OCR page data
     int loadConfiguration(const std::string& configPath);
     bool saveImages(const std::string& basePath, int imageTypes = 0x1F); // Save all image types
+
+    bool configureDocumentTypes();
+    int waitForDocumentDetection(int timeoutSeconds = 30);
+    std::string getDocumentName();
+    std::map<std::string, std::string> scanDocumentComplete(int timeoutSeconds = 30);
 
     // Error handling
     std::string getLastError() const;
@@ -66,6 +77,7 @@ public:
     static constexpr int ERROR_PROCESS = -3;
     static constexpr int ERROR_DEVICE = -4;
     static constexpr int ERROR_CONFIG = -5;
+    static constexpr int ERROR_TIMEOUT = -100;
 
 private:
     bool isInitialized;

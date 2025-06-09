@@ -4,6 +4,8 @@
 #include <locale>
 #include <codecvt>
 #include <filesystem>
+#include <thread>
+#include <chrono>
 
 std::wstring string_to_wstring(const std::string& str) {
     std::wstring_convert<std::codecvt_utf8_utf16<wchar_t>> conv;
@@ -50,7 +52,7 @@ int SinosecuScanner::initializeScanner(const std::string& userId, int nType, con
               #endif
               << std::endl;
 
-    // First check if directory exists
+    // Check if directory exists
     if (!std::filesystem::exists(sdkDirectory)) {
         setLastError("SDK directory does not exist: " + sdkDirectory);
         return ERROR_INIT;
@@ -96,6 +98,13 @@ int SinosecuScanner::initializeScanner(const std::string& userId, int nType, con
             isInitialized = true;
             sdkPath = sdkDirectory;
             std::cout << "✓ SDK initialized successfully!" << std::endl;
+
+            // Configure scanner for common document types after successful initialization
+            if (!configureDocumentTypes()) {
+                setLastError("Failed to configure document types");
+                releaseScanner();
+                return ERROR_CONFIG;
+            }
             break;
         case 1:
             setLastError("Authorization ID is incorrect - check your license");
@@ -124,6 +133,49 @@ int SinosecuScanner::initializeScanner(const std::string& userId, int nType, con
     return result;
 }
 
+bool SinosecuScanner::configureDocumentTypes() {
+    try {
+        // Clear any existing document types
+        ResetIDCardID();
+
+        // Set language to English
+        SetLanguage(1);
+
+        // Configure common document types for recognition
+        // Based on the SDK documentation, these are common document main IDs:
+
+        // Chinese ID Card (front and back)
+        int subIDs[] = {0}; // 0 means all sub-types
+        AddIDCardID(2, subIDs, 1);  // Resident identification card-photo page
+        AddIDCardID(3, subIDs, 1);  // Resident identification card-issuing authority page
+
+        // Driver's License
+        AddIDCardID(5, subIDs, 1);  // Vehicle drivers license
+
+        // Passport
+        AddIDCardID(13, subIDs, 1); // Passport
+
+        // Visa
+        AddIDCardID(12, subIDs, 1); // Visa
+
+        // Set image capture options
+        SetSaveImageType(0x1F); // Capture all image types (white, IR, UV, portraits)
+
+        // Enable page recognition
+        SetRecogVIZ(true);
+
+        // Enable chip reading if available
+        SetRecogDG(0xFFFF); // Enable all data groups
+
+        std::cout << "Document types and settings configured successfully" << std::endl;
+        return true;
+
+    } catch (const std::exception& e) {
+        setLastError("Exception configuring document types: " + std::string(e.what()));
+        return false;
+    }
+}
+
 void SinosecuScanner::releaseScanner() {
     if (isInitialized) {
         try {
@@ -142,7 +194,25 @@ int SinosecuScanner::checkDeviceStatus() {
     }
 
     try {
-        return CheckDeviceOnlineEx();
+        int status = CheckDeviceOnlineEx();
+        std::cout << "Device status: " << status << std::endl;
+
+        switch(status) {
+            case 1:
+                std::cout << "Device connected and initialized" << std::endl;
+                break;
+            case 2:
+                std::cout << "Device lost connection" << std::endl;
+                break;
+            case 3:
+                std::cout << "Device lost connection - need re-initialization" << std::endl;
+                break;
+            default:
+                std::cout << "Unknown device status: " << status << std::endl;
+                break;
+        }
+
+        return status;
     } catch (const std::exception& e) {
         setLastError("Error checking device status: " + std::string(e.what()));
         return ERROR_DEVICE;
@@ -154,20 +224,77 @@ int SinosecuScanner::detectDocumentOnScanner() {
         return ERROR_INIT;
     }
 
-    // First check device status
+    // Check device status first
     int deviceStatus = checkDeviceStatus();
-    if (deviceStatus != 1) {
-        setLastError("Device not ready. Status: " + std::to_string(deviceStatus));
+    if (deviceStatus == 3) {
+        setLastError("Device needs re-initialization");
+        return ERROR_DEVICE;
+    } else if (deviceStatus == 2) {
+        setLastError("Device not connected");
         return ERROR_DEVICE;
     }
 
     try {
         int result = DetectDocument();
-        std::cout << "Document detection result: " << result << std::endl;
+
+        switch(result) {
+            case -1:
+                std::cout << "Core engine not initialized" << std::endl;
+                break;
+            case 0:
+                std::cout << "No document detected" << std::endl;
+                break;
+            case 1:
+                std::cout << "Document detected and placed" << std::endl;
+                break;
+            case 2:
+                std::cout << "Document was taken out" << std::endl;
+                break;
+            case 3:
+                std::cout << "Mobile phone barcode detected (AR/KR series)" << std::endl;
+                break;
+            default:
+                std::cout << "Unknown detection result: " << result << std::endl;
+                break;
+        }
+
         return result;
     } catch (const std::exception& e) {
         setLastError("Error detecting document: " + std::string(e.what()));
         return ERROR_DETECT;
+    }
+}
+
+int SinosecuScanner::waitForDocumentDetection(int timeoutSeconds) {
+    if (!validateInitialization()) {
+        return ERROR_INIT;
+    }
+
+    std::cout << "Waiting for document detection (timeout: " << timeoutSeconds << "s)..." << std::endl;
+
+    auto startTime = std::chrono::steady_clock::now();
+    auto timeoutDuration = std::chrono::seconds(timeoutSeconds);
+
+    while (true) {
+        int result = detectDocumentOnScanner();
+
+        if (result == 1) { // Document detected
+            return result;
+        }
+
+        if (result < 0) { // Error occurred
+            return result;
+        }
+
+        // Check timeout
+        auto currentTime = std::chrono::steady_clock::now();
+        if (currentTime - startTime > timeoutDuration) {
+            setLastError("Document detection timeout");
+            return ERROR_TIMEOUT;
+        }
+
+        // Wait a bit before next check
+        std::this_thread::sleep_for(std::chrono::milliseconds(500));
     }
 }
 
@@ -188,9 +315,21 @@ std::map<std::string, int> SinosecuScanner::autoProcessDocument() {
 
         std::cout << "Auto process result: " << processResult << ", Card type: " << cardType << std::endl;
 
+        // Interpret cardType flags
+        if (cardType & 1) std::cout << "  → Document has chip" << std::endl;
+        if (cardType & 2) std::cout << "  → Document has no chip" << std::endl;
+        if (cardType & 4) std::cout << "  → Document has barcode" << std::endl;
+
         // Interpret results based on documentation
         if (processResult > 0) {
-            std::cout << "Document processed successfully. Main type: " << processResult << std::endl;
+            std::cout << "✓ Document processed successfully. Main type: " << processResult << std::endl;
+
+            // Get document name
+            std::string docName = getDocumentName();
+            if (!docName.empty()) {
+                std::cout << "  → Document type: " << docName << std::endl;
+            }
+
         } else {
             switch (processResult) {
                 case -1:
@@ -238,6 +377,23 @@ std::map<std::string, int> SinosecuScanner::autoProcessDocument() {
     return result;
 }
 
+std::string SinosecuScanner::getDocumentName() {
+    const int bufferSize = 256;
+    wchar_t buffer[bufferSize];
+    int actualSize = bufferSize;
+
+    try {
+        int result = GetIDCardName(buffer, actualSize);
+        if (result == 0) {
+            return wstring_to_string(std::wstring(buffer, actualSize));
+        }
+    } catch (const std::exception& e) {
+        setLastError("Exception getting document name: " + std::string(e.what()));
+    }
+
+    return "";
+}
+
 int SinosecuScanner::loadConfiguration(const std::string& configPath) {
     if (!validateInitialization()) {
         return ERROR_INIT;
@@ -274,6 +430,13 @@ std::string SinosecuScanner::getFieldValue(int attribute, int index) {
         int result = GetRecogResultEx(attribute, index, buffer, actualSize);
         if (result == 0) {
             return wstring_to_string(std::wstring(buffer, actualSize));
+        } else if (result == 1) {
+            // Buffer too small, try again with larger buffer
+            std::vector<wchar_t> largerBuffer(actualSize);
+            result = GetRecogResultEx(attribute, index, largerBuffer.data(), actualSize);
+            if (result == 0) {
+                return wstring_to_string(std::wstring(largerBuffer.data(), actualSize));
+            }
         }
     } catch (const std::exception& e) {
         setLastError("Exception getting field value: " + std::string(e.what()));
@@ -289,7 +452,7 @@ std::map<std::string, std::string> SinosecuScanner::getDocumentFields(int attrib
         return fields;
     }
 
-    // Common field indices for passport/ID documents
+    // Extended field mapping for common documents
     std::vector<std::pair<int, std::string>> fieldMap = {
             {1, "name"},
             {2, "gender"},
@@ -299,13 +462,19 @@ std::map<std::string, std::string> SinosecuScanner::getDocumentFields(int attrib
             {6, "id_number"},
             {7, "issue_authority"},
             {8, "issue_date"},
-            {9, "expiry_date"}
+            {9, "expiry_date"},
+            {10, "passport_number"},
+            {11, "place_of_birth"},
+            {12, "place_of_issue"}
     };
+
+    std::cout << "Extracting fields for attribute " << attribute << ":" << std::endl;
 
     for (const auto& field : fieldMap) {
         std::string value = getFieldValue(attribute, field.first);
         if (!value.empty()) {
             fields[field.second] = value;
+            std::cout << "  " << field.second << ": " << value << std::endl;
         }
     }
 
@@ -328,10 +497,70 @@ bool SinosecuScanner::saveImages(const std::string& basePath, int imageTypes) {
             return true;
         } else {
             setLastError("Failed to save images. Result: " + std::to_string(result));
+
+            // Interpret the result bits for partial success
+            if (result > 0) {
+                std::cout << "Partial image save failure:" << std::endl;
+                if (result & 1) std::cout << "  White image save failed" << std::endl;
+                if (result & 2) std::cout << "  IR image save failed" << std::endl;
+                if (result & 4) std::cout << "  UV image save failed" << std::endl;
+                if (result & 8) std::cout << "  Page portrait save failed" << std::endl;
+                if (result & 16) std::cout << "  Chip portrait save failed" << std::endl;
+            }
+
             return false;
         }
     } catch (const std::exception& e) {
         setLastError("Exception saving images: " + std::string(e.what()));
         return false;
     }
+}
+
+// Additional utility method for complete document scanning workflow
+std::map<std::string, std::string> SinosecuScanner::scanDocumentComplete(int timeoutSeconds) {
+    std::map<std::string, std::string> result;
+
+    if (!validateInitialization()) {
+        result["error"] = "Scanner not initialized";
+        return result;
+    }
+
+    std::cout << "\n=== Starting Complete Document Scan ===" << std::endl;
+
+    // Step 1: Wait for document detection
+    int detectionResult = waitForDocumentDetection(timeoutSeconds);
+    if (detectionResult != 1) {
+        result["error"] = "Document detection failed: " + std::to_string(detectionResult);
+        return result;
+    }
+
+    // Step 2: Process the document
+    auto processResult = autoProcessDocument();
+    if (processResult["status"] <= 0) {
+        result["error"] = "Document processing failed: " + std::to_string(processResult["status"]);
+        result["error_detail"] = getLastError();
+        return result;
+    }
+
+    // Step 3: Extract fields
+    auto ocrFields = getDocumentFields(1); // OCR fields
+    auto chipFields = getDocumentFields(0); // Chip fields
+
+    // Combine results
+    result["document_type"] = getDocumentName();
+    result["main_type"] = std::to_string(processResult["status"]);
+    result["card_type"] = std::to_string(processResult["cardType"]);
+
+    // Add OCR fields
+    for (const auto& field : ocrFields) {
+        result["ocr_" + field.first] = field.second;
+    }
+
+    // Add chip fields
+    for (const auto& field : chipFields) {
+        result["chip_" + field.first] = field.second;
+    }
+
+    std::cout << "=== Document Scan Complete ===" << std::endl;
+    return result;
 }

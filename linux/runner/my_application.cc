@@ -70,17 +70,35 @@ static void method_call_handler(FlMethodChannel* channel,
             int result = global_scanner_instance->initializeScanner(std::string(userId_cstr ? userId_cstr : ""), nType, std::string(sdkDirectory_cstr ? sdkDirectory_cstr : ""));
             response = FL_METHOD_RESPONSE(fl_method_success_response_new(fl_value_new_int(result)));
         }
-    } else if (strcmp(method_name, "releaseScanner") == 0) {
+    }
+    else if (strcmp(method_name, "releaseScanner") == 0) {
         std::cout << "Linux side: Calling releaseScanner." << std::endl;
         if (global_scanner_instance) {
             global_scanner_instance->releaseScanner();
         }
         response = FL_METHOD_RESPONSE(fl_method_success_response_new(nullptr));
-    } else if (strcmp(method_name, "detectDocument") == 0) {
+    }
+    else if (strcmp(method_name, "detectDocument") == 0) {
         std::cout << "Linux side: Calling detectDocumentOnScanner." << std::endl;
         int result = global_scanner_instance->detectDocumentOnScanner();
         response = FL_METHOD_RESPONSE(fl_method_success_response_new(fl_value_new_int(result)));
-    } else if (strcmp(method_name, "autoProcessDocument") == 0) {
+    }
+    else if (strcmp(method_name, "waitForDocumentDetection") == 0) {
+        if (fl_value_get_type(args) != FL_VALUE_TYPE_MAP) {
+            response = FL_METHOD_RESPONSE(fl_method_error_response_new("ARGUMENT_ERROR", "Expected map argument for waitForDocumentDetection", nullptr));
+        } else {
+            FlValue* timeout_value = fl_value_lookup_string(args, "timeoutSeconds");
+            if (!timeout_value || fl_value_get_type(timeout_value) != FL_VALUE_TYPE_INT) {
+                response = FL_METHOD_RESPONSE(fl_method_error_response_new("ARGUMENT_ERROR", "Invalid timeoutSeconds argument", nullptr));
+            } else {
+                int timeoutSeconds = fl_value_get_int(timeout_value);
+                std::cout << "Linux side: Waiting for document detection (timeout: " << timeoutSeconds << "s)" << std::endl;
+                int result = global_scanner_instance->waitForDocumentDetection(timeoutSeconds);
+                response = FL_METHOD_RESPONSE(fl_method_success_response_new(fl_value_new_int(result)));
+            }
+        }
+    }
+    else if (strcmp(method_name, "autoProcessDocument") == 0) {
         std::cout << "Linux side: Calling autoProcessDocument." << std::endl;
         std::map<std::string, int> cpp_result_map = global_scanner_instance->autoProcessDocument();
 
@@ -90,12 +108,101 @@ static void method_call_handler(FlMethodChannel* channel,
         }
         response = FL_METHOD_RESPONSE(fl_method_success_response_new(return_value_map));
     }
+    else if (strcmp(method_name, "getDocumentFields") == 0) {
+        if (fl_value_get_type(args) != FL_VALUE_TYPE_MAP) {
+            response = FL_METHOD_RESPONSE(fl_method_error_response_new("ARGUMENT_ERROR", "Expected map argument for getDocumentFields", nullptr));
+        } else {
+            FlValue* attribute_value = fl_value_lookup_string(args, "attribute");
+            if (!attribute_value || fl_value_get_type(attribute_value) != FL_VALUE_TYPE_INT) {
+                response = FL_METHOD_RESPONSE(fl_method_error_response_new("ARGUMENT_ERROR", "Invalid attribute argument", nullptr));
+            } else {
+                int attribute = fl_value_get_int(attribute_value);
+                std::cout << "Linux side: Getting document fields for attribute: " << attribute << std::endl;
+                std::map<std::string, std::string> fields = global_scanner_instance->getDocumentFields(attribute);
+
+                g_autoptr(FlValue) return_value_map = fl_value_new_map();
+                for (const auto& pair : fields) {
+                    fl_value_set_string_take(return_value_map, pair.first.c_str(), fl_value_new_string(pair.second.c_str()));
+                }
+                response = FL_METHOD_RESPONSE(fl_method_success_response_new(return_value_map));
+            }
+        }
+    }
+    else if (strcmp(method_name, "checkDeviceStatus") == 0) {
+        std::cout << "Linux side: Checking device status." << std::endl;
+        int result = global_scanner_instance->checkDeviceStatus();
+        response = FL_METHOD_RESPONSE(fl_method_success_response_new(fl_value_new_int(result)));
+    }
+    else if (strcmp(method_name, "scanDocumentComplete") == 0) {
+        if (fl_value_get_type(args) != FL_VALUE_TYPE_MAP) {
+            response = FL_METHOD_RESPONSE(fl_method_error_response_new("ARGUMENT_ERROR", "Expected map argument for scanDocumentComplete", nullptr));
+        } else {
+            FlValue* timeout_value = fl_value_lookup_string(args, "timeoutSeconds");
+            if (!timeout_value || fl_value_get_type(timeout_value) != FL_VALUE_TYPE_INT) {
+                response = FL_METHOD_RESPONSE(fl_method_error_response_new("ARGUMENT_ERROR", "Invalid timeoutSeconds argument", nullptr));
+            } else {
+                int timeoutSeconds = fl_value_get_int(timeout_value);
+                std::cout << "Linux side: Starting complete document scan (timeout: " << timeoutSeconds << "s)" << std::endl;
+                std::map<std::string, std::string> scanResult = global_scanner_instance->scanDocumentComplete(timeoutSeconds);
+
+                g_autoptr(FlValue) return_value_map = fl_value_new_map();
+                for (const auto& pair : scanResult) {
+                    fl_value_set_string_take(return_value_map, pair.first.c_str(), fl_value_new_string(pair.second.c_str()));
+                }
+                response = FL_METHOD_RESPONSE(fl_method_success_response_new(return_value_map));
+            }
+        }
+    }
+    else if (strcmp(method_name, "getDocumentName") == 0) {
+        std::cout << "Linux side: Getting document name." << std::endl;
+        std::string docName = global_scanner_instance->getDocumentName();
+        response = FL_METHOD_RESPONSE(fl_method_success_response_new(fl_value_new_string(docName.c_str())));
+    }
+    else if (strcmp(method_name, "saveImages") == 0) {
+        if (fl_value_get_type(args) != FL_VALUE_TYPE_MAP) {
+            response = FL_METHOD_RESPONSE(fl_method_error_response_new("ARGUMENT_ERROR", "Expected map argument for saveImages", nullptr));
+        } else {
+            FlValue* base_path_value = fl_value_lookup_string(args, "basePath");
+            FlValue* image_types_value = fl_value_lookup_string(args, "imageTypes");
+
+            if (!base_path_value || fl_value_get_type(base_path_value) != FL_VALUE_TYPE_STRING ||
+                !image_types_value || fl_value_get_type(image_types_value) != FL_VALUE_TYPE_INT) {
+                response = FL_METHOD_RESPONSE(fl_method_error_response_new("ARGUMENT_ERROR", "Invalid arguments for saveImages", nullptr));
+            } else {
+                const char* basePath_cstr = fl_value_get_string(base_path_value);
+                int imageTypes = fl_value_get_int(image_types_value);
+                std::cout << "Linux side: Saving images to: " << basePath_cstr << std::endl;
+                bool result = global_scanner_instance->saveImages(std::string(basePath_cstr), imageTypes);
+                response = FL_METHOD_RESPONSE(fl_method_success_response_new(fl_value_new_bool(result)));
+            }
+        }
+    }
+    else if (strcmp(method_name, "loadConfiguration") == 0) {
+        if (fl_value_get_type(args) != FL_VALUE_TYPE_MAP) {
+            response = FL_METHOD_RESPONSE(fl_method_error_response_new("ARGUMENT_ERROR", "Expected map argument for loadConfiguration", nullptr));
+        } else {
+            FlValue* config_path_value = fl_value_lookup_string(args, "configPath");
+            if (!config_path_value || fl_value_get_type(config_path_value) != FL_VALUE_TYPE_STRING) {
+                response = FL_METHOD_RESPONSE(fl_method_error_response_new("ARGUMENT_ERROR", "Invalid configPath argument", nullptr));
+            } else {
+                const char* configPath_cstr = fl_value_get_string(config_path_value);
+                std::cout << "Linux side: Loading configuration from: " << configPath_cstr << std::endl;
+                int result = global_scanner_instance->loadConfiguration(std::string(configPath_cstr));
+                response = FL_METHOD_RESPONSE(fl_method_success_response_new(fl_value_new_int(result)));
+            }
+        }
+    }
+    else if (strcmp(method_name, "getLastError") == 0) {
+        std::cout << "Linux side: Getting last error." << std::endl;
+        std::string error = global_scanner_instance->getLastError();
+        response = FL_METHOD_RESPONSE(fl_method_success_response_new(fl_value_new_string(error.c_str())));
+    }
     else {
         std::cout << "Linux side: Method not implemented: " << method_name << std::endl;
         response = FL_METHOD_RESPONSE(fl_method_not_implemented_response_new());
     }
 
-    // Update how we return the response
+    // Return the response
     if (response) {
         fl_method_call_respond(method_call, response, nullptr);
     }
