@@ -414,7 +414,7 @@ bool SinosecuScanner::loadConfigurationFile() {
             }
 
             std::cout << "Falling back to manual configuration..." << std::endl;
-            return configureDocumentTypesManually();
+            return configureDocumentTypes();
         }
 
         // Try to load the config file
