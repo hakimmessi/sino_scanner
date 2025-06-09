@@ -62,7 +62,6 @@ public:
     int loadConfiguration(const std::string& configPath);
     bool saveImages(const std::string& basePath, int imageTypes = 0x1F); // Save all image types
 
-    bool configureDocumentTypes();
     int waitForDocumentDetection(int timeoutSeconds = 30);
     std::string getDocumentName();
     std::map<std::string, std::string> scanDocumentComplete(int timeoutSeconds = 30);
@@ -81,6 +80,8 @@ public:
 
 private:
     bool isInitialized;
+    bool loadConfigurationFile();
+    bool configureDocumentTypes();
     std::string lastError;
     std::string sdkPath;
 
