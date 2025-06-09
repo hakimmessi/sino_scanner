@@ -99,9 +99,9 @@ int SinosecuScanner::initializeScanner(const std::string& userId, int nType, con
             sdkPath = sdkDirectory;
             std::cout << "SDK initialized successfully!" << std::endl;
 
-            // Try to load configuration file instead of manual configuration
-            if (!loadConfigurationFile()) {
-                setLastError("Failed to load configuration file");
+            // Configure scanner for common document types after successful initialization
+            if (!configureDocumentTypes()) {
+                setLastError("Failed to configure document types");
                 releaseScanner();
                 return ERROR_CONFIG;
             }
@@ -418,50 +418,6 @@ int SinosecuScanner::loadConfiguration(const std::string& configPath) {
     } catch (const std::exception& e) {
         setLastError("Exception loading configuration: " + std::string(e.what()));
         return ERROR_CONFIG;
-    }
-}
-
-bool SinosecuScanner::loadConfigurationFile() {
-    try {
-        // Construct config file path
-        std::string configPath = sdkPath + "/IDCardConfig.ini";
-
-        std::cout << "Looking for config file at: " << configPath << std::endl;
-
-        // Check if config file exists
-        if (!std::filesystem::exists(configPath)) {
-            std::cout << "IDCardConfig.ini not found at: " << configPath << std::endl;
-            std::cout << "Available files in lib directory:" << std::endl;
-
-            // List files in lib directory for debugging
-            std::string libDir = sdkPath;
-            if (std::filesystem::exists(libDir)) {
-                for (const auto& entry : std::filesystem::directory_iterator(libDir)) {
-                    std::cout << "  - " << entry.path().filename() << std::endl;
-                }
-            }
-
-            std::cout << "Falling back to manual configuration..." << std::endl;
-            return configureDocumentTypes();
-        }
-
-        // Try to load the config file
-        std::cout << "Loading configuration from: " << configPath << std::endl;
-        int result = loadConfiguration(configPath);
-
-        if (result == 0) {
-            std::cout << "Configuration file loaded successfully!" << std::endl;
-            return true;
-        } else {
-            std::cout << "Failed to load config file (error: " << result << ")" << std::endl;
-            std::cout << "Falling back to manual configuration..." << std::endl;
-            return configureDocumentTypes();
-        }
-
-    } catch (const std::exception& e) {
-        std::cout << "Exception loading config file: " << e.what() << std::endl;
-        std::cout << "Falling back to manual configuration..." << std::endl;
-        return configureDocumentTypes();
     }
 }
 

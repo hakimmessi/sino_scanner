@@ -187,6 +187,7 @@ class SinosecuReader {
 
   // Load configuration file
   static Future<int> loadConfiguration(String configPath) async {
+    configPath = "/home/kinektek/sino_scanner/build/linux/arm64/release/bundle/lib/IDCardConfig.ini";
     try {
       print('[Flutter] Loading configuration from: $configPath');
       final int result = await _channel.invokeMethod('loadConfiguration', {
