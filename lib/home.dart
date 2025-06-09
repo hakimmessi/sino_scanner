@@ -225,10 +225,14 @@ class _HomeScreenState extends State<HomeScreen> {
                 ElevatedButton(
                   onPressed: _initializeScanner,
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.blue,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 15),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+                    backgroundColor: Colors.white,
+                    foregroundColor: _isScannerInitialized ? Colors.white : Colors.black87,
+                    padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 20),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(30),
+                      side: const BorderSide(color: Colors.black87, width: 2), // Thinner border
+                    ),
+                    elevation: 0, // Shadow handled by container
                   ),
                   child: const Text('Initialize Scanner', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                 ),
@@ -245,16 +249,20 @@ class _HomeScreenState extends State<HomeScreen> {
                         child: ElevatedButton(
                           onPressed: _isScanning ? null : _scanDocument,
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.green,
+                            backgroundColor: Colors.black87,
                             foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(vertical: 15),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(25)),
+                            padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 20),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(30),
+                              side: const BorderSide(color: Colors.black87, width: 2), // Thinner border
+                            ),
+                            elevation: 0,
                           ),
                           child: _isScanning
                               ? const SizedBox(
                             height: 20,
                             width: 20,
-                            child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                            child: CircularProgressIndicator(color: Colors.white70, strokeWidth: 2),
                           )
                               : const Text('Auto Scan', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                         ),
