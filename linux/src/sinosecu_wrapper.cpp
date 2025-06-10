@@ -13,8 +13,27 @@ std::wstring string_to_wstring(const std::string& str) {
 }
 
 std::string wstring_to_string(const std::wstring& wstr) {
-    std::wstring_convert<std::codecvt_utf8_utf16<wchar_t>> conv;
-    return conv.to_bytes(wstr);
+    if (wstr.empty()) {
+        return "";
+    }
+
+    try {
+        std::wstring_convert<std::codecvt_utf8_utf16<wchar_t>> conv;
+        return conv.to_bytes(wstr);
+    } catch (const std::exception& e) {
+        std::cerr << "String conversion error: " << e.what() << std::endl;
+
+        // Fallback: manual conversion for basic ASCII
+        std::string result;
+        for (wchar_t wc : wstr) {
+            if (wc < 128) { // Basic ASCII only
+                result += static_cast<char>(wc);
+            } else {
+                result += '?'; // Replace non-ASCII with ?
+            }
+        }
+        return result;
+    }
 }
 
 SinosecuScanner::SinosecuScanner() : isInitialized(false) {}
@@ -164,7 +183,6 @@ bool SinosecuScanner::configureDocumentTypes() {
         // Enable page recognition
         SetRecogVIZ(true);
 
-        // IMPORTANT: Configure chip reading properly
         std::cout << "Configuring chip reading..." << std::endl;
         try {
             // Enable chip reading for documents that have chips
@@ -195,8 +213,8 @@ bool SinosecuScanner::configureDocumentTypes() {
             }
 
         } catch (const std::exception& e) {
-            std::cout << "⚠ Chip configuration exception: " << e.what() << std::endl;
-            std::cout << "  Continuing with OCR-only mode..." << std::endl;
+            std::cout << "Chip configuration exception: " << e.what() << std::endl;
+            std::cout << "Continuing with OCR-only mode..." << std::endl;
         }
         std::cout << "Document types and settings configured successfully" << std::endl;
         return true;
@@ -414,15 +432,27 @@ std::string SinosecuScanner::getDocumentName() {
     int actualSize = bufferSize;
 
     try {
+        // Initialize buffer to prevent issues
+        std::wmemset(buffer, 0, bufferSize);
+
         int result = GetIDCardName(buffer, actualSize);
-        if (result == 0) {
-            return wstring_to_string(std::wstring(buffer, actualSize));
+        if (result == 0 && actualSize > 0) {
+            // Ensure null termination
+            if (actualSize >= bufferSize) {
+                actualSize = bufferSize - 1;
+            }
+            buffer[actualSize] = L'\0';
+
+            std::wstring wstr(buffer, actualSize);
+            return wstring_to_string(wstr);
+        } else {
+            std::cout << "GetIDCardName failed or returned empty. Result: " << result << ", Size: " << actualSize << std::endl;
+            return "";
         }
     } catch (const std::exception& e) {
         setLastError("Exception getting document name: " + std::string(e.what()));
+        return "";
     }
-
-    return "";
 }
 
 int SinosecuScanner::loadConfiguration(const std::string& configPath) {
@@ -458,19 +488,46 @@ std::string SinosecuScanner::getFieldValue(int attribute, int index) {
     int actualSize = bufferSize;
 
     try {
+        // Initialize buffer
+        std::wmemset(buffer, 0, bufferSize);
+
         int result = GetRecogResultEx(attribute, index, buffer, actualSize);
-        if (result == 0) {
-            return wstring_to_string(std::wstring(buffer, actualSize));
+
+        if (result == 0 && actualSize > 0) {
+            // Ensure proper termination
+            if (actualSize >= bufferSize) {
+                actualSize = bufferSize - 1;
+            }
+            buffer[actualSize] = L'\0';
+
+            std::wstring wstr(buffer, actualSize);
+            std::string converted = wstring_to_string(wstr);
+
+            // Debug output
+            std::cout << "  Field[" << attribute << "][" << index << "]: '" << converted << "' (size: " << actualSize << ")" << std::endl;
+
+            return converted;
         } else if (result == 1) {
             // Buffer too small, try again with larger buffer
-            std::vector<wchar_t> largerBuffer(actualSize);
-            result = GetRecogResultEx(attribute, index, largerBuffer.data(), actualSize);
-            if (result == 0) {
-                return wstring_to_string(std::wstring(largerBuffer.data(), actualSize));
+            std::cout << "  Buffer too small for field[" << attribute << "][" << index << "], need: " << actualSize << std::endl;
+
+            if (actualSize > 0 && actualSize < 10000) { // Sanity check
+                std::vector<wchar_t> largerBuffer(actualSize + 1);
+                std::wmemset(largerBuffer.data(), 0, actualSize + 1);
+
+                int newSize = actualSize;
+                result = GetRecogResultEx(attribute, index, largerBuffer.data(), newSize);
+                if (result == 0) {
+                    largerBuffer[newSize] = L'\0';
+                    std::wstring wstr(largerBuffer.data(), newSize);
+                    return wstring_to_string(wstr);
+                }
             }
+        } else {
+            std::cout << "  Field[" << attribute << "][" << index << "] not available. Result: " << result << std::endl;
         }
     } catch (const std::exception& e) {
-        setLastError("Exception getting field value: " + std::string(e.what()));
+        std::cout << "  Exception getting field[" << attribute << "][" << index << "]: " << e.what() << std::endl;
     }
 
     return "";
@@ -483,30 +540,46 @@ std::map<std::string, std::string> SinosecuScanner::getDocumentFields(int attrib
         return fields;
     }
 
-    // Extended field mapping for common documents
-    std::vector<std::pair<int, std::string>> fieldMap = {
-            {1, "name"},
-            {2, "gender"},
-            {3, "nationality"},
-            {4, "birthday"},
-            {5, "address"},
-            {6, "id_number"},
-            {7, "issue_authority"},
-            {8, "issue_date"},
-            {9, "expiry_date"},
-            {10, "passport_number"},
-            {11, "place_of_birth"},
-            {12, "place_of_issue"}
+    // Extended field mapping specifically for passports (Main ID 13)
+    std::vector<std::pair<int, std::string>> passportFieldMap = {
+            {0, "Type"},         // Passport type (MRZ)
+            {1, "passport_number_mrz"},   // Passport number from MRZ
+            {2, "name"},          // English name
+            {3, "gender"},                // Gender
+            {4, "date_of_birth"},              // Birthday
+            {5, "expiry_date"},           // Expiry date
+            {8, "Postname"},       // English surname
+            {9, "Given_names"},    // English first name
+            {10, "mrz1"},                 // MRZ line 1
+            {11, "mrz2"},                 // MRZ line 2
+            {14, "place_of_birth"},          // Birth place
+            {15, "Issuing_country"},          // Issue place
+            {16, "date_of_issue"},           // Issue date
+            {17, "rfid_mrz"},             // RFID MRZ
+            {18, "ocr_mrz"},              // OCR MRZ
+            {19, "nationality"},
+            {20, "Personal_number"},
+            {21, "Issuing_authority"},
     };
 
-    std::cout << "Extracting fields for attribute " << attribute << ":" << std::endl;
+    std::cout << "Extracting " << (attribute == 0 ? "CHIP" : "OCR") << " fields:" << std::endl;
 
-    for (const auto& field : fieldMap) {
+    for (const auto& field : passportFieldMap) {
         std::string value = getFieldValue(attribute, field.first);
-        if (!value.empty()) {
-            fields[field.second] = value;
-            std::cout << "  " << field.second << ": " << value << std::endl;
+        if (!value.empty() && value != " " && value.length() > 0) {
+            // Clean up the value
+            value.erase(0, value.find_first_not_of(" \t\n\r")); // trim left
+            value.erase(value.find_last_not_of(" \t\n\r") + 1); // trim right
+
+            if (!value.empty()) {
+                fields[field.second] = value;
+                std::cout << "  ✓ " << field.second << ": '" << value << "'" << std::endl;
+            }
         }
+    }
+
+    if (fields.empty()) {
+        std::cout << "No fields extracted for attribute " << attribute << std::endl;
     }
 
     return fields;
@@ -623,29 +696,57 @@ std::map<std::string, std::string> SinosecuScanner::scanDocumentComplete(int tim
 
     std::cout << "Processing result: " << status << ", Card type: " << cardType << std::endl;
 
-    // Step 3: Handle the result (including partial successes)
-    auto handledResult = handleProcessingResult(status, cardType);
+    // Step 3: Handle results with better error tolerance
+    if (status > 0 || status == -8 || status == -9) {
+        // Success or partial success
+        result["status"] = (status > 0) ? "success" : "partial_success";
+        result["main_type"] = (status > 0) ? std::to_string(status) : "passport_detected";
+        result["card_type"] = std::to_string(cardType);
 
-    // Step 4: Extract fields regardless of chip reading success/failure
-    std::cout << "Extracting OCR fields..." << std::endl;
-    auto ocrFields = getDocumentFields(1); // OCR fields
+        if (status == -8) {
+            result["warning"] = "Chip reading failed - using OCR data only";
+        } else if (status == -9) {
+            result["warning"] = "OCR failed - using chip data only";
+        }
 
-    std::cout << "Extracting chip fields..." << std::endl;
-    auto chipFields = getDocumentFields(0); // Chip fields (may be empty if chip failed)
+        // Get document name (with error handling)
+        std::string docName = getDocumentName();
+        if (!docName.empty()) {
+            result["document_type"] = docName;
+        } else {
+            result["document_type"] = "passport"; // Default for passports
+        }
 
-    // Combine all results
-    for (const auto& pair : handledResult) {
-        result[pair.first] = pair.second;
+    } else {
+        // Complete failure
+        result["error"] = getProcessingErrorMessage(status);
+        result["status"] = "error";
+        result["main_type"] = std::to_string(status);
+        result["card_type"] = std::to_string(cardType);
+        return result; // Don't try to extract fields on complete failure
     }
 
-    // Add OCR fields with prefix
-    for (const auto& field : ocrFields) {
-        result["ocr_" + field.first] = field.second;
-    }
+    // Step 4: Extract fields with error handling
+    try {
+        std::cout << "Extracting OCR fields..." << std::endl;
+        auto ocrFields = getDocumentFields(1); // OCR fields
 
-    // Add chip fields with prefix (may be empty)
-    for (const auto& field : chipFields) {
-        result["chip_" + field.first] = field.second;
+        // Add OCR fields with prefix
+        for (const auto& field : ocrFields) {
+            result["ocr_" + field.first] = field.second;
+        }
+
+        std::cout << "Extracting chip fields..." << std::endl;
+        auto chipFields = getDocumentFields(0); // Chip fields
+
+        // Add chip fields with prefix
+        for (const auto& field : chipFields) {
+            result["chip_" + field.first] = field.second;
+        }
+
+    } catch (const std::exception& e) {
+        std::cout << "Exception during field extraction: " << e.what() << std::endl;
+        result["field_extraction_error"] = e.what();
     }
 
     std::cout << "=== Document Scan Complete ===" << std::endl;
