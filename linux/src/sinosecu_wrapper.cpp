@@ -164,9 +164,40 @@ bool SinosecuScanner::configureDocumentTypes() {
         // Enable page recognition
         SetRecogVIZ(true);
 
-        // Enable chip reading if available
-        SetRecogDG(0xFFFF); // Enable all data groups
+        // IMPORTANT: Configure chip reading properly
+        std::cout << "Configuring chip reading..." << std::endl;
+        try {
+            // Enable chip reading for documents that have chips
+            int chipResult = SetRecogChipCardAttribute(1); // 1 = enable chip reading
 
+            switch(chipResult) {
+                case 0:
+                    std::cout << "Chip reading enabled successfully" << std::endl;
+
+                    // Configure which data groups to read from the chip
+                    // For passports, typically DG1, DG2, DG11, DG12 are available
+                    SetRecogDG(0x0FFF); // Enable DG1-DG12 (common passport data groups)
+                    std::cout << "Passport chip data groups configured (DG1-DG12)" << std::endl;
+                    break;
+
+                case 1:
+                    std::cout << "Chip reading setup failed - device not initialized" << std::endl;
+                    break;
+
+                case 2:
+                    std::cout << "Chip reading not supported by this device" << std::endl;
+                    std::cout << "Continuing with OCR-only mode..." << std::endl;
+                    break;
+
+                default:
+                    std::cout << "Chip reading setup returned: " << chipResult << std::endl;
+                    break;
+            }
+
+        } catch (const std::exception& e) {
+            std::cout << "⚠ Chip configuration exception: " << e.what() << std::endl;
+            std::cout << "  Continuing with OCR-only mode..." << std::endl;
+        }
         std::cout << "Document types and settings configured successfully" << std::endl;
         return true;
 
@@ -412,7 +443,7 @@ int SinosecuScanner::loadConfiguration(const std::string& configPath) {
             std::cout << "Configuration loaded successfully from: " << configPath << std::endl;
         } else {
             setLastError("Failed to load configuration. Result: " + std::to_string(result));
-        }
+        } 
 
         return result;
     } catch (const std::exception& e) {
@@ -516,7 +547,58 @@ bool SinosecuScanner::saveImages(const std::string& basePath, int imageTypes) {
     }
 }
 
-// Additional utility method for complete document scanning workflow
+std::map<std::string, std::string> SinosecuScanner::handleProcessingResult(int processResult, int cardType) {
+    std::map<std::string, std::string> result;
+
+    if (processResult > 0) {
+        // Success - document recognized
+        result["status"] = "success";
+        result["main_type"] = std::to_string(processResult);
+        result["card_type"] = std::to_string(cardType);
+
+        // Get document name
+        std::string docName = getDocumentName();
+        if (!docName.empty()) {
+            result["document_type"] = docName;
+        }
+
+    } else if (processResult == -8) {
+        // Chip reading failed but OCR succeeded
+        std::cout << "Chip reading failed, but OCR was successful" << std::endl;
+        std::cout << "This is common - continuing with OCR data only..." << std::endl;
+
+        result["status"] = "partial_success";
+        result["main_type"] = "unknown"; // We don't know the main type due to chip failure
+        result["card_type"] = std::to_string(cardType);
+        result["warning"] = "Chip reading failed - using OCR data only";
+
+        // Still try to get document name and OCR fields
+        std::string docName = getDocumentName();
+        if (!docName.empty()) {
+            result["document_type"] = docName;
+        }
+
+    } else if (processResult == -9) {
+        // Chip reading succeeded but OCR failed
+        std::cout << "OCR failed, but chip reading was successful" << std::endl;
+
+        result["status"] = "partial_success";
+        result["main_type"] = std::to_string(abs(processResult)); // Use absolute value
+        result["card_type"] = std::to_string(cardType);
+        result["warning"] = "OCR failed - using chip data only";
+
+    } else {
+        // Complete failure
+        result["error"] = getProcessingErrorMessage(processResult);
+        result["status"] = "error";
+        result["main_type"] = std::to_string(processResult);
+        result["card_type"] = std::to_string(cardType);
+    }
+
+    return result;
+}
+
+// utility method for complete document scanning workflow
 std::map<std::string, std::string> SinosecuScanner::scanDocumentComplete(int timeoutSeconds) {
     std::map<std::string, std::string> result;
 
@@ -536,31 +618,52 @@ std::map<std::string, std::string> SinosecuScanner::scanDocumentComplete(int tim
 
     // Step 2: Process the document
     auto processResult = autoProcessDocument();
-    if (processResult["status"] <= 0) {
-        result["error"] = "Document processing failed: " + std::to_string(processResult["status"]);
-        result["error_detail"] = getLastError();
-        return result;
+    int status = processResult["status"];
+    int cardType = processResult["cardType"];
+
+    std::cout << "Processing result: " << status << ", Card type: " << cardType << std::endl;
+
+    // Step 3: Handle the result (including partial successes)
+    auto handledResult = handleProcessingResult(status, cardType);
+
+    // Step 4: Extract fields regardless of chip reading success/failure
+    std::cout << "Extracting OCR fields..." << std::endl;
+    auto ocrFields = getDocumentFields(1); // OCR fields
+
+    std::cout << "Extracting chip fields..." << std::endl;
+    auto chipFields = getDocumentFields(0); // Chip fields (may be empty if chip failed)
+
+    // Combine all results
+    for (const auto& pair : handledResult) {
+        result[pair.first] = pair.second;
     }
 
-    // Step 3: Extract fields
-    auto ocrFields = getDocumentFields(1); // OCR fields
-    auto chipFields = getDocumentFields(0); // Chip fields
-
-    // Combine results
-    result["document_type"] = getDocumentName();
-    result["main_type"] = std::to_string(processResult["status"]);
-    result["card_type"] = std::to_string(processResult["cardType"]);
-
-    // Add OCR fields
+    // Add OCR fields with prefix
     for (const auto& field : ocrFields) {
         result["ocr_" + field.first] = field.second;
     }
 
-    // Add chip fields
+    // Add chip fields with prefix (may be empty)
     for (const auto& field : chipFields) {
         result["chip_" + field.first] = field.second;
     }
 
     std::cout << "=== Document Scan Complete ===" << std::endl;
     return result;
+}
+
+std::string SinosecuScanner::getProcessingErrorMessage(int errorCode) {
+    switch (errorCode) {
+        case -1: return "No valid document types set for classification";
+        case -2: return "Image capturing failed";
+        case -3: return "Image cutting failed";
+        case -4: return "Classification failed - no matched template";
+        case -5: return "Classification failed - no valid document types";
+        case -6: return "Classification failed - recognition rejected";
+        case -7: return "Recognition failed";
+        case -8: return "Chip reading failed but page recognition successful";
+        case -9: return "Chip reading successful but page recognition failed";
+        case -10: return "Both page recognition and chip reading failed";
+        default: return "Unknown processing error: " + std::to_string(errorCode);
+    }
 }

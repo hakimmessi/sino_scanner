@@ -38,6 +38,7 @@ int SetLanguage(int nLangType);
 void SetSaveImageType(int nImageType);
 void SetRecogVIZ(bool bRecogVIZ);
 void SetRecogDG(int nDG);
+int SetRecogChipCardAttribute(int nReadCard);
 void ResetIDCardID();
 int AddIDCardID(int nMainID, int nSubID[], int nSubIDCount);
 
@@ -64,7 +65,7 @@ public:
     bool configureDocumentTypes();
     int waitForDocumentDetection(int timeoutSeconds = 30);
     std::string getDocumentName();
-    std::map<std::string, std::string> scanDocumentComplete(int timeoutSeconds = 30);
+    std::map<std::string, std::string> scanDocumentComplete(int timeoutSeconds = 20);
 
     // Error handling
     std::string getLastError() const;
@@ -82,6 +83,8 @@ private:
     bool isInitialized;
     std::string lastError;
     std::string sdkPath;
+    std::map<std::string, std::string> handleProcessingResult(int processResult, int cardType);
+    std::string getProcessingErrorMessage(int errorCode);
 
     // Helper methods
     void setLastError(const std::string& error);
