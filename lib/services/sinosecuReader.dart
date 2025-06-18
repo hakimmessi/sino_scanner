@@ -536,6 +536,9 @@ class SinosecuReader {
     bool validateData = true,
     bool saveImages = false,
     String? imagePath,
+    customName,
+    cleanupOld,
+
   }) async {
     try {
       print('[Flutter] Starting complete scan workflow...');

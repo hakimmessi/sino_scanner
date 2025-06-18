@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:sino_scanner/services/PassportData.dart';
+import 'package:sino_scanner/services/ScanResult.dart';
 import '../services/sinosecuReader.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -13,7 +15,11 @@ class _HomeScreenState extends State<HomeScreen> {
   String _statusText = "Press 'Initialize Scanner' to start";
   bool _isScannerInitialized = false;
   bool _isScanning = false;
-  Map<String, dynamic>? _recognitionResult;
+  PassportData? _passportData;
+  Map<String, dynamic>? _rawScanData;
+  List<String>? _savedImagePaths;
+  bool _saveImages = true;
+  bool _enableDebugMode = false;
 
   @override
   void dispose() {
@@ -31,7 +37,9 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() {
       _statusText = 'Initializing scanner...';
       _isScannerInitialized = false;
-      _recognitionResult = null;
+      _passportData = null;
+      _rawScanData = null;
+      _savedImagePaths = null;
     });
 
     const String userId = "426911010110763248";
@@ -88,22 +96,33 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() {
       _isScanning = true;
       _statusText = 'Place your document on the scanner...\nWaiting for detection...';
-      _recognitionResult = null;
+      _passportData = null;
+      _rawScanData = null;
+      _savedImagePaths = null;
     });
 
     try {
-      // The scanning workflow
-      Map<String, dynamic> result = await SinosecuReader.scanDocumentComplete(20); // 30 second timeout
+      // Use the enhanced scan method
+      ScanResult result = await SinosecuReader.performCompleteScan(
+        timeoutSeconds: 20,
+        enableDebug: _enableDebugMode,
+        validateData: true,
+        saveImages: _saveImages,
+        customName: 'passport_${DateTime.now().millisecondsSinceEpoch}',
+        cleanupOld: true,
+      );
 
-      if (result.containsKey('error')) {
+      if (result.success) {
         setState(() {
-          _statusText = 'Scan failed: ${result['error']}';
+          _statusText = 'Document scanned successfully!';
+          _passportData = result.passportData;
+          _rawScanData = result.rawScanData;
+          _savedImagePaths = result.savedImagePaths;
           _isScanning = false;
         });
       } else {
         setState(() {
-          _statusText = 'Document scanned successfully!';
-          _recognitionResult = result;
+          _statusText = 'Scan failed: ${result.error}';
           _isScanning = false;
         });
       }
@@ -116,7 +135,7 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  /*Future<void> _manualDetectAndProcess() async {
+  Future<void> _debugFields() async {
     if (!_isScannerInitialized) {
       setState(() {
         _statusText = "Please initialize scanner first";
@@ -125,64 +144,75 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     setState(() {
-      _statusText = 'Checking for document...';
-      _recognitionResult = null;
+      _statusText = 'Starting debug field scan...\nCheck console for details.';
     });
 
     try {
-      // Method 2: Manual step-by-step process
-      int detectionResult = await SinosecuReader.detectDocument();
+      await SinosecuReader.debugAllAvailableFields(1); // OCR fields
+      await SinosecuReader.debugAllAvailableFields(0); // Chip fields
 
-      String detectMsg = _getDetectionMessage(detectionResult);
-
-      if (detectionResult == 1) {
-        setState(() {
-          _statusText = 'Document detected! Processing...';
-        });
-
-        Map<String, dynamic> processResult = await SinosecuReader.autoProcessDocument();
-
-        if (processResult.containsKey("status") && (processResult["status"] as int? ?? -1) > 0) {
-          // Get document fields
-          Map<String, dynamic> ocrFields = await SinosecuReader.getDocumentFields(1); // OCR
-          Map<String, dynamic> chipFields = await SinosecuReader.getDocumentFields(0); // Chip
-
-          setState(() {
-            _statusText = 'Document processed successfully!';
-            _recognitionResult = {
-              ...processResult,
-              'ocr_fields': ocrFields,
-              'chip_fields': chipFields,
-            };
-          });
-        } else {
-          setState(() {
-            _statusText = 'Processing failed: ${processResult["status"]}';
-            _recognitionResult = processResult;
-          });
-        }
-      } else {
-        setState(() {
-          _statusText = detectMsg;
-        });
-      }
+      setState(() {
+        _statusText = 'Debug scan completed. Check console logs.';
+      });
     } catch (e) {
       setState(() {
-        _statusText = 'Detection error: $e';
+        _statusText = 'Debug error: $e';
       });
     }
   }
 
-  String _getDetectionMessage(int code) {
-    switch (code) {
-      case -1: return "Core engine not initialized";
-      case 0: return "No document detected\nPlace document and try again";
-      case 1: return "Document detected!";
-      case 2: return "Document removed";
-      case 3: return "Mobile barcode detected";
-      default: return "Unknown detection status: $code";
+  Future<void> _viewSavedImages() async {
+    try {
+      List<String> imagePaths = await SinosecuReader.getAllPassportImages();
+      if (imagePaths.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No saved images found')),
+        );
+        return;
+      }
+
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Saved Images'),
+          content: SizedBox(
+            width: double.maxFinite,
+            height: 300,
+            child: ListView.builder(
+              itemCount: imagePaths.length,
+              itemBuilder: (context, index) {
+                String imagePath = imagePaths[index];
+                String fileName = imagePath.split('/').last;
+
+                return ListTile(
+                  leading: const Icon(Icons.image),
+                  title: Text(fileName),
+                  subtitle: Text(imagePath),
+                  onTap: () {
+                    // You could implement image viewing here
+                    Navigator.of(context).pop();
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Image path: $imagePath')),
+                    );
+                  },
+                );
+              },
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Close'),
+            ),
+          ],
+        ),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error loading images: $e')),
+      );
     }
-  } */
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -191,6 +221,18 @@ class _HomeScreenState extends State<HomeScreen> {
       appBar: AppBar(
         title: const Text('Sinosecu Document Scanner'),
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
+        actions: [
+          if (_isScannerInitialized) ...[
+            IconButton(
+              icon: const Icon(Icons.settings),
+              onPressed: () => _showSettingsDialog(),
+            ),
+            IconButton(
+              icon: const Icon(Icons.image),
+              onPressed: _viewSavedImages,
+            ),
+          ],
+        ],
       ),
       body: Center(
         child: SingleChildScrollView(
@@ -222,13 +264,13 @@ class _HomeScreenState extends State<HomeScreen> {
                   onPressed: _initializeScanner,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.white,
-                    foregroundColor: _isScannerInitialized ? Colors.white : Colors.black87,
+                    foregroundColor: Colors.black87,
                     padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 20),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(30),
-                      side: const BorderSide(color: Colors.black87, width: 2), // Thinner border
+                      side: const BorderSide(color: Colors.black87, width: 2),
                     ),
-                    elevation: 0, // Shadow handled by container
+                    elevation: 0,
                   ),
                   child: const Text('Initialize Scanner', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                 ),
@@ -250,7 +292,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 20),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(30),
-                              side: const BorderSide(color: Colors.black87, width: 2), // Thinner border
+                              side: const BorderSide(color: Colors.black87, width: 2),
                             ),
                             elevation: 0,
                           ),
@@ -264,31 +306,61 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                       ),
                     ),
-                    /*Expanded(
+                    Expanded(
                       child: Container(
                         margin: const EdgeInsets.only(left: 8),
                         child: ElevatedButton(
-                          onPressed: _isScanning ? null : _manualDetectAndProcess,
+                          onPressed: _isScanning ? null : _debugFields,
                           style: ElevatedButton.styleFrom(
                             backgroundColor: Colors.orange,
                             foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(vertical: 15),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(25)),
+                            padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 20),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(30),
+                            ),
+                            elevation: 0,
                           ),
-                          child: const Text('Manual Detect', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                          child: const Text('Debug Fields', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                         ),
                       ),
-                    ), */
+                    ),
                   ],
                 ),
                 const SizedBox(height: 15),
+
+                // Settings toggles
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    Row(
+                      children: [
+                        Checkbox(
+                          value: _saveImages,
+                          onChanged: (value) => setState(() => _saveImages = value ?? true),
+                        ),
+                        const Text('Save Images'),
+                      ],
+                    ),
+                    Row(
+                      children: [
+                        Checkbox(
+                          value: _enableDebugMode,
+                          onChanged: (value) => setState(() => _enableDebugMode = value ?? false),
+                        ),
+                        const Text('Debug Mode'),
+                      ],
+                    ),
+                  ],
+                ),
 
                 // Reset button
                 ElevatedButton(
                   onPressed: () {
                     setState(() {
                       _statusText = "Scanner ready";
-                      _recognitionResult = null;
+                      _passportData = null;
+                      _rawScanData = null;
+                      _savedImagePaths = null;
                       _isScanning = false;
                     });
                   },
@@ -304,92 +376,210 @@ class _HomeScreenState extends State<HomeScreen> {
 
               const SizedBox(height: 20),
 
-              // Recognition Results Display
-              if (_recognitionResult != null) ...[
-                Card(
-                  elevation: 4,
-                  margin: const EdgeInsets.symmetric(vertical: 10),
-                  child: Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(20.0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Icon(Icons.check_circle, color: Colors.green, size: 24),
-                            const SizedBox(width: 8),
-                            const Text(
-                              "Recognition Results",
-                              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.green),
-                            ),
-                          ],
-                        ),
-                        const Divider(height: 20),
+              // Passport Data Display (Enhanced)
+              if (_passportData != null) ...[
+                _buildPassportDataCard(),
+              ],
 
-                        // Document Type Info
-                        if (_recognitionResult!.containsKey('document_type'))
-                          _buildResultRow("Document Type", _recognitionResult!['document_type']),
-                        if (_recognitionResult!.containsKey('main_type'))
-                          _buildResultRow("Main Type ID", _recognitionResult!['main_type']),
-                        if (_recognitionResult!.containsKey('card_type'))
-                          _buildResultRow("Card Type", _getCardTypeDescription(_recognitionResult!['card_type'])),
+              // Raw Data Display (Collapsible)
+              if (_rawScanData != null) ...[
+                const SizedBox(height: 10),
+                _buildRawDataCard(),
+              ],
 
-                        const SizedBox(height: 10),
-
-                        // OCR Fields
-                        if (_recognitionResult!.containsKey('ocr_fields') || _hasOcrFields()) ...[
-                          const Text("OCR Data:", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                          const SizedBox(height: 5),
-                          ..._buildOcrFields(),
-                        ],
-
-                        // Chip Fields
-                        if (_recognitionResult!.containsKey('chip_fields') || _hasChipFields()) ...[
-                          const SizedBox(height: 10),
-                          const Text("Chip Data:", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                          const SizedBox(height: 5),
-                          ..._buildChipFields(),
-                        ],
-
-                        // Legacy format support
-                        if (_recognitionResult!.containsKey('status'))
-                          _buildResultRow("Process Status", _recognitionResult!['status'].toString()),
-                        if (_recognitionResult!.containsKey('cardType'))
-                          _buildResultRow("Card Type Details", _recognitionResult!['cardType'].toString()),
-
-                        // Error handling
-                        if (_recognitionResult!.containsKey('error')) ...[
-                          const SizedBox(height: 10),
-                          Container(
-                            padding: const EdgeInsets.all(10),
-                            decoration: BoxDecoration(
-                              color: Colors.red[50],
-                              borderRadius: BorderRadius.circular(8),
-                              border: Border.all(color: Colors.red[200]!),
-                            ),
-                            child: Row(
-                              children: [
-                                Icon(Icons.error, color: Colors.red, size: 20),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: Text(
-                                    "Error: ${_recognitionResult!['error']}",
-                                    style: const TextStyle(color: Colors.red, fontSize: 14),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
-                ),
+              // Saved Images Display
+              if (_savedImagePaths != null && _savedImagePaths!.isNotEmpty) ...[
+                const SizedBox(height: 10),
+                _buildSavedImagesCard(),
               ],
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildPassportDataCard() {
+    return Card(
+      elevation: 4,
+      margin: const EdgeInsets.symmetric(vertical: 10),
+      child: ExpansionTile(
+        title: Row(
+          children: [
+            Icon(Icons.check_circle, color: Colors.green, size: 24),
+            const SizedBox(width: 8),
+            const Text(
+              "Passport Information",
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.green),
+            ),
+          ],
+        ),
+        initiallyExpanded: true,
+        children: [
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(20.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (_passportData!.passportNumber != null)
+                  _buildResultRow("Passport Number", _passportData!.passportNumber!),
+                if (_passportData!.englishName != null)
+                  _buildResultRow("Full Name", _passportData!.englishName!),
+                if (_passportData!.englishSurname != null)
+                  _buildResultRow("Surname", _passportData!.englishSurname!),
+                if (_passportData!.englishFirstName != null)
+                  _buildResultRow("First Name(s)", _passportData!.englishFirstName!),
+                if (_passportData!.gender != null)
+                  _buildResultRow("Gender", _passportData!.gender!),
+                if (_passportData!.dateOfBirth != null)
+                  _buildResultRow("Date of Birth", _formatDate(_passportData!.dateOfBirth!)),
+                if (_passportData!.dateOfExpiry != null)
+                  _buildResultRow("Date of Expiry", _formatDate(_passportData!.dateOfExpiry!)),
+                if (_passportData!.issuingCountryCode != null)
+                  _buildResultRow("Issuing Country", _passportData!.issuingCountryCode!),
+                if (_passportData!.nationalityCode != null)
+                  _buildResultRow("Nationality", _passportData!.nationalityCode!),
+                if (_passportData!.placeOfBirth != null)
+                  _buildResultRow("Place of Birth", _passportData!.placeOfBirth!),
+                if (_passportData!.placeOfIssue != null)
+                  _buildResultRow("Place of Issue", _passportData!.placeOfIssue!),
+                if (_passportData!.dateOfIssue != null)
+                  _buildResultRow("Date of Issue", _formatDate(_passportData!.dateOfIssue!)),
+
+                // MRZ Data
+                if (_passportData!.mrzLine1 != null || _passportData!.mrzLine2 != null) ...[
+                  const SizedBox(height: 15),
+                  const Text("Machine Readable Zone (MRZ):",
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 5),
+                  if (_passportData!.mrzLine1 != null)
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.grey[100],
+                        borderRadius: BorderRadius.circular(4),
+                        border: Border.all(color: Colors.grey[300]!),
+                      ),
+                      child: Text(
+                        _passportData!.mrzLine1!,
+                        style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+                      ),
+                    ),
+                  if (_passportData!.mrzLine2 != null) ...[
+                    const SizedBox(height: 4),
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.grey[100],
+                        borderRadius: BorderRadius.circular(4),
+                        border: Border.all(color: Colors.grey[300]!),
+                      ),
+                      child: Text(
+                        _passportData!.mrzLine2!,
+                        style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+                      ),
+                    ),
+                  ],
+                ],
+
+                // Validation Status
+                const SizedBox(height: 15),
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: _passportData!.isValid ? Colors.green[50] : Colors.orange[50],
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                        color: _passportData!.isValid ? Colors.green[200]! : Colors.orange[200]!
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        _passportData!.isValid ? Icons.verified : Icons.warning,
+                        color: _passportData!.isValid ? Colors.green : Colors.orange,
+                        size: 20,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        _passportData!.isValid ? "Valid passport data" : "Incomplete passport data",
+                        style: TextStyle(
+                          color: _passportData!.isValid ? Colors.green[700] : Colors.orange[700],
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRawDataCard() {
+    return Card(
+      elevation: 2,
+      margin: const EdgeInsets.symmetric(vertical: 5),
+      child: ExpansionTile(
+        title: const Text("Raw Scan Data", style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+        children: [
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(20.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                for (String key in _rawScanData!.keys)
+                  if (!key.startsWith('ocr_') && !key.startsWith('chip_'))
+                    _buildResultRow(key.replaceAll('_', ' ').toUpperCase(),
+                        _rawScanData![key].toString()),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSavedImagesCard() {
+    return Card(
+      elevation: 2,
+      margin: const EdgeInsets.symmetric(vertical: 5),
+      child: ExpansionTile(
+        title: Text("Saved Images (${_savedImagePaths!.length})",
+            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+        children: [
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(20.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                for (String imagePath in _savedImagePaths!)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 2),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.image, size: 16, color: Colors.blue),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            imagePath.split('/').last,
+                            style: const TextStyle(fontSize: 12),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -418,68 +608,55 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  bool _hasOcrFields() {
-    return _recognitionResult!.keys.any((key) => key.startsWith('ocr_'));
-  }
-
-  bool _hasChipFields() {
-    return _recognitionResult!.keys.any((key) => key.startsWith('chip_'));
-  }
-
-  List<Widget> _buildOcrFields() {
-    List<Widget> widgets = [];
-
-    if (_recognitionResult!.containsKey('ocr_fields')) {
-      Map<String, dynamic> ocrFields = _recognitionResult!['ocr_fields'];
-      for (String key in ocrFields.keys) {
-        widgets.add(_buildResultRow(key.replaceAll('_', ' ').toUpperCase(), ocrFields[key].toString()));
-      }
-    } else {
-      // Handle direct OCR fields (ocr_name, ocr_id_number, etc.)
-      for (String key in _recognitionResult!.keys) {
-        if (key.startsWith('ocr_')) {
-          String displayName = key.substring(4).replaceAll('_', ' ').toUpperCase();
-          widgets.add(_buildResultRow(displayName, _recognitionResult![key].toString()));
-        }
+  String _formatDate(String dateString) {
+    if (dateString.length == 8) {
+      try {
+        String year = dateString.substring(0, 4);
+        String month = dateString.substring(4, 6);
+        String day = dateString.substring(6, 8);
+        return "$day/$month/$year";
+      } catch (e) {
+        return dateString;
       }
     }
-
-    return widgets;
+    return dateString;
   }
 
-  List<Widget> _buildChipFields() {
-    List<Widget> widgets = [];
-
-    if (_recognitionResult!.containsKey('chip_fields')) {
-      Map<String, dynamic> chipFields = _recognitionResult!['chip_fields'];
-      for (String key in chipFields.keys) {
-        widgets.add(_buildResultRow(key.replaceAll('_', ' ').toUpperCase(), chipFields[key].toString()));
-      }
-    } else {
-      // Handle direct chip fields (chip_name, chip_id_number, etc.)
-      for (String key in _recognitionResult!.keys) {
-        if (key.startsWith('chip_')) {
-          String displayName = key.substring(5).replaceAll('_', ' ').toUpperCase();
-          widgets.add(_buildResultRow(displayName, _recognitionResult![key].toString()));
-        }
-      }
-    }
-
-    return widgets;
-  }
-
-  String _getCardTypeDescription(String cardType) {
-    try {
-      int type = int.parse(cardType);
-      List<String> descriptions = [];
-
-      if (type & 1 != 0) descriptions.add("Has Chip");
-      if (type & 2 != 0) descriptions.add("No Chip");
-      if (type & 4 != 0) descriptions.add("Has Barcode");
-
-      return descriptions.isNotEmpty ? descriptions.join(", ") : "Unknown ($cardType)";
-    } catch (e) {
-      return cardType;
-    }
+  void _showSettingsDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Scanner Settings'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CheckboxListTile(
+              title: const Text('Save Images'),
+              subtitle: const Text('Automatically save passport images'),
+              value: _saveImages,
+              onChanged: (value) {
+                setState(() => _saveImages = value ?? true);
+                Navigator.of(context).pop();
+              },
+            ),
+            CheckboxListTile(
+              title: const Text('Debug Mode'),
+              subtitle: const Text('Enable detailed logging'),
+              value: _enableDebugMode,
+              onChanged: (value) {
+                setState(() => _enableDebugMode = value ?? false);
+                Navigator.of(context).pop();
+              },
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
   }
 }
