@@ -4,6 +4,8 @@
 #include <string>
 #include <map>
 #include <vector>
+#include <algorithm>
+#include <cctype>
 
 // Forward declaration
 class PngWrapper;
@@ -58,6 +60,7 @@ public:
     std::map<std::string, int> autoProcessDocument();
     void releaseScanner();
 
+    // Device and document operations
     int checkDeviceStatus();
     std::map<std::string, std::string> getDocumentFields(int attribute = 1); // 1 = OCR page data
     int loadConfiguration(const std::string& configPath);
@@ -65,7 +68,23 @@ public:
     bool configureDocumentTypes();
     int waitForDocumentDetection(int timeoutSeconds = 30);
     std::string getDocumentName();
+
+    // Complete scanning workflows
     std::map<std::string, std::string> scanDocumentComplete(int timeoutSeconds = 20);
+    std::map<std::string, std::string> scanDocumentCompleteWithDebug(int timeoutSeconds = 20, bool enableDebug = false);
+
+    // Formatted data extraction (matches GUI display format)
+    std::map<std::string, std::string> getFormattedPassportData();
+
+    // Field validation methods
+    bool isValidPassportNumber(const std::string& passportNum);
+    bool isValidDate(const std::string& dateStr);
+    bool isValidMRZ(const std::string& mrzLine);
+    std::string getValidatedFieldValue(int attribute, int index, const std::string& fieldName);
+
+    // Debug and utility methods
+    void debugAllAvailableFields(int attribute);
+    std::string formatDate(const std::string& dateStr);
 
     // Error handling
     std::string getLastError() const;
@@ -83,6 +102,8 @@ private:
     bool isInitialized;
     std::string lastError;
     std::string sdkPath;
+
+    // Processing and error handling
     std::map<std::string, std::string> handleProcessingResult(int processResult, int cardType);
     std::string getProcessingErrorMessage(int errorCode);
 

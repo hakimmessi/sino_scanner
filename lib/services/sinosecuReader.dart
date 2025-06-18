@@ -1,4 +1,10 @@
+import 'dart:io';
+
 import 'package:flutter/services.dart';
+
+import 'ImagePathHelper.dart';
+import 'PassportData.dart';
+import 'ScanResult.dart';
 
 class SinosecuReader {
   static const MethodChannel _channel = MethodChannel('com.example.sino_scanner');
@@ -148,6 +154,124 @@ class SinosecuReader {
     } catch (e) {
       print('[Flutter] Unknown error during scanDocumentComplete: $e');
       return {"error": e.toString()};
+    }
+  }
+
+  // Complete document scanning workflow with debug mode
+  static Future<Map<String, dynamic>> scanDocumentCompleteWithDebug(int timeoutSeconds, {bool enableDebug = false}) async {
+    try {
+      print('[Flutter] Starting complete document scan with debug (timeout: ${timeoutSeconds}s, debug: $enableDebug)');
+      final Map<dynamic, dynamic>? result = await _channel.invokeMethod('scanDocumentCompleteWithDebug', {
+        'timeoutSeconds': timeoutSeconds,
+        'enableDebug': enableDebug,
+      });
+      print('[Flutter] scanDocumentCompleteWithDebug result: $result');
+      if (result != null) {
+        return Map<String, dynamic>.from(result);
+      }
+      return {"error": "Null result from debug scan"};
+    } on PlatformException catch (e) {
+      print('[Flutter] Failed to complete debug scan: ${e.message}');
+      return {"error": e.message};
+    } catch (e) {
+      print('[Flutter] Unknown error during scanDocumentCompleteWithDebug: $e');
+      return {"error": e.toString()};
+    }
+  }
+
+  // Get formatted passport data (matches GUI display format)
+  static Future<Map<String, dynamic>> getFormattedPassportData() async {
+    try {
+      print('[Flutter] Getting formatted passport data');
+      final Map<dynamic, dynamic>? result = await _channel.invokeMethod('getFormattedPassportData');
+      print('[Flutter] getFormattedPassportData result: $result');
+      if (result != null) {
+        return Map<String, dynamic>.from(result);
+      }
+      return {"error": "No formatted data available"};
+    } on PlatformException catch (e) {
+      print('[Flutter] Failed to get formatted passport data: ${e.message}');
+      return {"error": e.message};
+    } catch (e) {
+      print('[Flutter] Unknown error during getFormattedPassportData: $e');
+      return {"error": e.toString()};
+    }
+  }
+
+  // Debug all available fields
+  static Future<void> debugAllAvailableFields(int attribute) async {
+    try {
+      print('[Flutter] Starting debug scan for attribute: $attribute');
+      await _channel.invokeMethod('debugAllAvailableFields', {
+        'attribute': attribute,
+      });
+      print('[Flutter] Debug scan completed - check native logs for details');
+    } on PlatformException catch (e) {
+      print('[Flutter] Failed to debug fields: ${e.message}');
+    } catch (e) {
+      print('[Flutter] Unknown error during debugAllAvailableFields: $e');
+    }
+  }
+
+  // Validate field data
+  static Future<bool> isValidPassportNumber(String passportNum) async {
+    try {
+      final bool result = await _channel.invokeMethod('isValidPassportNumber', {
+        'passportNumber': passportNum,
+      });
+      return result;
+    } on PlatformException catch (e) {
+      print('[Flutter] Failed to validate passport number: ${e.message}');
+      return false;
+    } catch (e) {
+      print('[Flutter] Unknown error during passport validation: $e');
+      return false;
+    }
+  }
+
+  static Future<bool> isValidDate(String dateStr) async {
+    try {
+      final bool result = await _channel.invokeMethod('isValidDate', {
+        'dateString': dateStr,
+      });
+      return result;
+    } on PlatformException catch (e) {
+      print('[Flutter] Failed to validate date: ${e.message}');
+      return false;
+    } catch (e) {
+      print('[Flutter] Unknown error during date validation: $e');
+      return false;
+    }
+  }
+
+  static Future<bool> isValidMRZ(String mrzLine) async {
+    try {
+      final bool result = await _channel.invokeMethod('isValidMRZ', {
+        'mrzLine': mrzLine,
+      });
+      return result;
+    } on PlatformException catch (e) {
+      print('[Flutter] Failed to validate MRZ: ${e.message}');
+      return false;
+    } catch (e) {
+      print('[Flutter] Unknown error during MRZ validation: $e');
+      return false;
+    }
+  }
+
+  // Format date from YYYYMMDD to YYYY-MM-DD
+  static Future<String> formatDate(String dateStr) async {
+    try {
+      final String result = await _channel.invokeMethod('formatDate', {
+        'dateString': dateStr,
+      });
+      return result;
+    } on PlatformException catch (e) {
+      print('[Flutter] Failed to format date: ${e.message}');
+      return dateStr; // Return original if formatting fails
+    } catch (e) {
+      print('[Flutter] Unknown error during date formatting: $e');
+      return dateStr;
     }
   }
 
@@ -312,5 +436,148 @@ class SinosecuReader {
     if (cardType & 6 != 0) features.add("No Chip but Has Barcode");
 
     return features.isNotEmpty ? features.join(", ") : "Unknown card type: $cardType";
+  }
+
+  // Enhanced passport data extraction method
+  static Future<PassportData?> extractPassportData({bool useFormatted = true, bool validateData = true}) async {
+    try {
+      Map<String, dynamic> data;
+
+      if (useFormatted) {
+        data = await getFormattedPassportData();
+      } else {
+        data = await getDocumentFields(1); // OCR data
+      }
+
+      if (data.containsKey('error')) {
+        print('[Flutter] Error extracting passport data: ${data['error']}');
+        return null;
+      }
+
+      return PassportData.fromMap(data, validateData: validateData);
+    } catch (e) {
+      print('[Flutter] Exception extracting passport data: $e');
+      return null;
+    }
+  }
+
+  static Future<Map<String, dynamic>> savePassportImages({
+    String? customName,
+    int imageTypes = 0x1F,
+    bool cleanupOld = true,
+  }) async {
+    try {
+      // Get the proper image path
+      String imagePath = await ImagePathHelper.getPassportImagePath(customName: customName);
+
+      print('[Flutter] Saving passport images to: $imagePath');
+
+      // Save images using the original method
+      bool success = await SinosecuReader.saveImages(imagePath, imageTypes: imageTypes);
+
+      Map<String, dynamic> result = {
+        'success': success,
+        'basePath': imagePath,
+      };
+
+      if (success) {
+        // List the actual saved files
+        List<String> expectedFiles = [];
+
+        // Based on imageTypes flags, predict what files should be created
+        if (imageTypes & 0x01 != 0) expectedFiles.add('${imagePath}.jpg'); // White image
+        if (imageTypes & 0x02 != 0) expectedFiles.add('${imagePath}_IR.jpg'); // IR image
+        if (imageTypes & 0x04 != 0) expectedFiles.add('${imagePath}_UV.jpg'); // UV image
+        if (imageTypes & 0x08 != 0) expectedFiles.add('${imagePath}_Head.jpg'); // Page portrait
+        if (imageTypes & 0x10 != 0) expectedFiles.add('${imagePath}_HeadEc.jpg'); // Chip portrait
+
+        // Check which files actually exist
+        List<String> savedFiles = [];
+        for (String filePath in expectedFiles) {
+          if (await File(filePath).exists()) {
+            savedFiles.add(filePath);
+          }
+        }
+
+        result['savedFiles'] = savedFiles;
+        result['fileCount'] = savedFiles.length;
+
+        print('[Flutter] Successfully saved ${savedFiles.length} image files');
+
+        // Cleanup old images if requested
+        if (cleanupOld) {
+          await ImagePathHelper.cleanupOldImages();
+        }
+
+      } else {
+        result['error'] = 'Failed to save images';
+      }
+
+      return result;
+
+    } catch (e) {
+      print('[Flutter] Error in savePassportImages: $e');
+      return {
+        'success': false,
+        'error': e.toString(),
+      };
+    }
+  }
+
+  // Get all saved passport images
+  static Future<List<String>> getAllPassportImages() async {
+    return await ImagePathHelper.getPassportImagePaths();
+  }
+
+  // Helper method for complete workflow with enhanced error handling
+  static Future<ScanResult> performCompleteScan({
+    int timeoutSeconds = 20,
+    bool enableDebug = false,
+    bool validateData = true,
+    bool saveImages = false,
+    String? imagePath,
+  }) async {
+    try {
+      print('[Flutter] Starting complete scan workflow...');
+
+      // Check device status first
+      int deviceStatus = await checkDeviceStatus();
+      if (deviceStatus != 1) {
+        return ScanResult.error("Device not ready: ${interpretDeviceStatus(deviceStatus)}");
+      }
+
+      // Perform the scan
+      Map<String, dynamic> scanResult;
+      if (enableDebug) {
+        scanResult = await scanDocumentCompleteWithDebug(timeoutSeconds, enableDebug: true);
+      } else {
+        scanResult = await scanDocumentComplete(timeoutSeconds);
+      }
+
+      if (scanResult.containsKey('error')) {
+        return ScanResult.error(scanResult['error']);
+      }
+
+      // Extract passport data
+      PassportData? passportData = await extractPassportData(
+        useFormatted: true,
+        validateData: validateData,
+      );
+
+      // Save images if requested
+      bool imagesSaved = false;
+      if (saveImages && imagePath != null) {
+        imagesSaved = await SinosecuReader.saveImages(imagePath);
+      }
+
+      return ScanResult.success(
+        passportData: passportData,
+        rawScanData: scanResult,
+        imagesSaved: imagesSaved,
+      );
+
+    } catch (e) {
+      return ScanResult.error("Scan workflow failed: $e");
+    }
   }
 }

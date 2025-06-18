@@ -26,10 +26,10 @@ std::string wstring_to_string(const std::wstring& wstr) {
         // Fallback: manual conversion for basic ASCII
         std::string result;
         for (wchar_t wc : wstr) {
-            if (wc < 128) { // Basic ASCII only
+            if (wc < 128) {
                 result += static_cast<char>(wc);
             } else {
-                result += '?'; // Replace non-ASCII with ?
+                result += '?';
             }
         }
         return result;
@@ -165,17 +165,17 @@ bool SinosecuScanner::configureDocumentTypes() {
 
         // Chinese ID Card (front and back)
         int subIDs[] = {0}; // 0 means all sub-types
-        AddIDCardID(2, subIDs, 1);  // Resident identification card-photo page
-        AddIDCardID(3, subIDs, 1);  // Resident identification card-issuing authority page
+        //AddIDCardID(2, subIDs, 1);  // Resident identification card-photo page
+       // AddIDCardID(3, subIDs, 1);  // Resident identification card-issuing authority page
 
         // Driver's License
-        AddIDCardID(5, subIDs, 1);  // Vehicle drivers license
+       // AddIDCardID(5, subIDs, 1);  // Vehicle drivers license
 
         // Passport
         AddIDCardID(13, subIDs, 1); // Passport
 
         // Visa
-        AddIDCardID(12, subIDs, 1); // Visa
+       // AddIDCardID(12, subIDs, 1); // Visa
 
         // Set image capture options
         SetSaveImageType(0x1F); // Capture all image types (white, IR, UV, portraits)
@@ -193,9 +193,8 @@ bool SinosecuScanner::configureDocumentTypes() {
                     std::cout << "Chip reading enabled successfully" << std::endl;
 
                     // Configure which data groups to read from the chip
-                    // For passports, typically DG1, DG2, DG11, DG12 are available
-                    SetRecogDG(0x0FFF); // Enable DG1-DG12 (common passport data groups)
-                    std::cout << "Passport chip data groups configured (DG1-DG12)" << std::endl;
+                    SetRecogDG(1); // Enable  (common passport data groups)
+                    //std::cout << "Passport chip data groups configured (DG1-DG12)" << std::endl;
                     break;
 
                 case 1:
@@ -343,7 +342,7 @@ int SinosecuScanner::waitForDocumentDetection(int timeoutSeconds) {
         }
 
         // Wait a bit before next check
-        std::this_thread::sleep_for(std::chrono::milliseconds(500));
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
     }
 }
 
@@ -533,6 +532,81 @@ std::string SinosecuScanner::getFieldValue(int attribute, int index) {
     return "";
 }
 
+bool SinosecuScanner::isValidPassportNumber(const std::string& passportNum) {
+    // Basic passport number validation
+    if (passportNum.length() < 6 || passportNum.length() > 12) {
+        return false;
+    }
+
+    // Check if contains only alphanumeric characters
+    return std::all_of(passportNum.begin(), passportNum.end(),
+                       [](char c) { return std::isalnum(c); });
+}
+
+bool SinosecuScanner::isValidDate(const std::string& dateStr) {
+    // Check if date is in YYYYMMDD format
+    if (dateStr.length() != 8) {
+        return false;
+    }
+
+    // Check if all digits
+    if (!std::all_of(dateStr.begin(), dateStr.end(), ::isdigit)) {
+        return false;
+    }
+
+    // Basic range validation
+    int year = std::stoi(dateStr.substr(0, 4));
+    int month = std::stoi(dateStr.substr(4, 2));
+    int day = std::stoi(dateStr.substr(6, 2));
+
+    return (year >= 1900 && year <= 2100 &&
+            month >= 1 && month <= 12 &&
+            day >= 1 && day <= 31);
+}
+
+bool SinosecuScanner::isValidMRZ(const std::string& mrzLine) {
+    // MRZ lines should be exactly 44 characters
+    if (mrzLine.length() != 44) {
+        return false;
+    }
+
+    // Should contain only uppercase letters, digits, and '<'
+    return std::all_of(mrzLine.begin(), mrzLine.end(),
+                       [](char c) {
+                           return std::isupper(c) || std::isdigit(c) || c == '<';
+                       });
+}
+
+// Enhanced field extraction with validation
+std::string SinosecuScanner::getValidatedFieldValue(int attribute, int index, const std::string& fieldName) {
+    std::string value = getFieldValue(attribute, index);
+
+    if (value.empty()) {
+        return value;
+    }
+
+    // Apply field-specific validation
+    if (fieldName == "passport_number_mrz" || fieldName == "passport_number_direct") {
+        if (!isValidPassportNumber(value)) {
+            std::cout << "Warning: Invalid passport number format: " << value << std::endl;
+        }
+    } else if (fieldName == "date_of_birth" || fieldName == "date_of_expiry" || fieldName == "date_of_issue") {
+        if (!isValidDate(value)) {
+            std::cout << "Warning: Invalid date format: " << value << std::endl;
+        }
+    } else if (fieldName == "mrz_line_1" || fieldName == "mrz_line_2") {
+        if (!isValidMRZ(value)) {
+            std::cout << "Warning: Invalid MRZ format: " << value << std::endl;
+        }
+    } else if (fieldName == "gender") {
+        if (value != "M" && value != "F" && value != "X") {
+            std::cout << "Warning: Unexpected gender value: " << value << std::endl;
+        }
+    }
+
+    return value;
+}
+
 std::map<std::string, std::string> SinosecuScanner::getDocumentFields(int attribute) {
     std::map<std::string, std::string> fields;
 
@@ -540,26 +614,38 @@ std::map<std::string, std::string> SinosecuScanner::getDocumentFields(int attrib
         return fields;
     }
 
-    // Extended field mapping specifically for passports (Main ID 13)
     std::vector<std::pair<int, std::string>> passportFieldMap = {
-            {0, "Type"},         // Passport type (MRZ)
-            {1, "passport_number_mrz"},   // Passport number from MRZ
-            {2, "name"},          // English name
-            {3, "gender"},                // Gender
-            {4, "date_of_birth"},              // Birthday
-            {5, "expiry_date"},           // Expiry date
-            {8, "Postname"},       // English surname
-            {9, "Given_names"},    // English first name
-            {10, "mrz1"},                 // MRZ line 1
-            {11, "mrz2"},                 // MRZ line 2
+            // Core MRZ fields (these exactly match the SDK documentation)
+            {0,  "passport_type"},           // "P" - Passport type from MRZ
+            {1,  "passport_number_mrz"},     // Passport number from MRZ
+            {2,  "domestic_name"},           // Name in local language/script
+            {3,  "english_name"},            // Full English name
+            {4,  "gender"},                  // "M" or "F"
+            {5,  "date_of_birth"},           // Birth date in YYYYMMDD format
+            {6,  "date_of_expiry"},          // Expiry date in YYYYMMDD format
+            {7,  "issuing_country_code"},    // 3-letter country code
+            {8,  "english_surname"},         // Surname only
+            {9,  "english_first_name"},      // First name(s)
+            {10, "mrz_line_1"},              // First MRZ line (44 characters)
+            {11, "mrz_line_2"},              // Second MRZ line (44 characters)
+            {12, "nationality_code"},        // Holder nationality code from MRZ
+
+            // Additional passport fields
+            {13, "passport_number_direct"},  // Passport number from direct OCR (visual zone)
             {14, "place_of_birth"},          // Birth place
-            {15, "Issuing_country"},          // Issue place
+            {15, "place_of_issue"},          // Issue place
             {16, "date_of_issue"},           // Issue date
-            {17, "rfid_mrz"},             // RFID MRZ
-            {18, "ocr_mrz"},              // OCR MRZ
-            {19, "nationality"},
-            {20, "Personal_number"},
-            {21, "Issuing_authority"},
+            {17, "rfid_mrz"},                // MRZ data from RFID chip
+            {18, "ocr_mrz"},                 // MRZ data from OCR
+            {21, "national_id_number"},      // National ID number
+            {23, "gender_ocr"},              // Gender from OCR
+            {24, "nationality_code_ocr"},    // Nationality from OCR
+            {25, "id_card_number_ocr"},      // ID card number from OCR
+            {26, "birth_date_ocr"},          // Birth date from OCR
+            {27, "valid_until_ocr"},         // Valid until from OCR
+            {28, "issuing_authority_ocr"},   // Issuing authority from OCR
+            {29, "domestic_surname"},        // Domestic surname
+            {30, "domestic_first_name"}      // Domestic first name
     };
 
     std::cout << "Extracting " << (attribute == 0 ? "CHIP" : "OCR") << " fields:" << std::endl;
@@ -583,6 +669,64 @@ std::map<std::string, std::string> SinosecuScanner::getDocumentFields(int attrib
     }
 
     return fields;
+}
+
+
+std::map<std::string, std::string> SinosecuScanner::getFormattedPassportData() {
+    std::map<std::string, std::string> formattedData;
+
+    if (!validateInitialization()) {
+        return formattedData;
+    }
+
+    // Get OCR fields (attribute = 1) - this is what you'll primarily use
+    auto ocrFields = getDocumentFields(1);
+
+
+    if (ocrFields.count("passport_number_mrz")) {
+        formattedData["passport_number"] = "The passport number from MRZ " + ocrFields["passport_number_mrz"];
+    }
+
+    if (ocrFields.count("english_name")) {
+        formattedData["english_name"] = ocrFields["english_name"];
+    }
+
+    if (ocrFields.count("gender")) {
+        formattedData["sex"] = ocrFields["gender"];
+    }
+
+    if (ocrFields.count("date_of_birth")) {
+        formattedData["date_of_birth"] = formatDate(ocrFields["date_of_birth"]);
+    }
+
+    if (ocrFields.count("date_of_expiry")) {
+        formattedData["date_of_expiry"] = formatDate(ocrFields["date_of_expiry"]);
+    }
+
+    if (ocrFields.count("issuing_country_code")) {
+        formattedData["issuing_country_code"] = ocrFields["issuing_country_code"];
+    }
+
+    if (ocrFields.count("english_surname")) {
+        formattedData["english_surname"] = ocrFields["english_surname"];
+    }
+
+    if (ocrFields.count("english_first_name")) {
+        formattedData["english_first_name"] = ocrFields["english_first_name"];
+    }
+
+    return formattedData;
+}
+
+// Helper to format dates from YYYYMMDD to YYYY-MM-DD
+std::string SinosecuScanner::formatDate(const std::string& dateStr) {
+    if (dateStr.length() == 8 && std::all_of(dateStr.begin(), dateStr.end(), ::isdigit)) {
+        std::string year = dateStr.substr(0, 4);
+        std::string month = dateStr.substr(4, 2);
+        std::string day = dateStr.substr(6, 2);
+        return year + "-" + month + "-" + day;
+    }
+    return dateStr;
 }
 
 bool SinosecuScanner::saveImages(const std::string& basePath, int imageTypes) {
@@ -671,6 +815,35 @@ std::map<std::string, std::string> SinosecuScanner::handleProcessingResult(int p
     return result;
 }
 
+void SinosecuScanner::debugAllAvailableFields(int attribute) {
+    std::cout << "\n=== DEBUG: Scanning all fields for attribute " << attribute << " ===" << std::endl;
+
+    // Try indices 0-50 to see what's available
+    for (int i = 0; i <= 50; i++) {
+        std::string value = getFieldValue(attribute, i);
+        if (!value.empty() && value != " ") {
+            std::cout << "Index " << i << ": '" << value << "'" << std::endl;
+
+            // Also try to get the field name
+            const int bufferSize = 256;
+            wchar_t nameBuffer[bufferSize];
+            int nameSize = bufferSize;
+            std::wmemset(nameBuffer, 0, bufferSize);
+
+            int nameResult = GetFieldNameEx(attribute, i, nameBuffer, nameSize);
+            if (nameResult == 0 && nameSize > 0) {
+                nameBuffer[std::min(nameSize, bufferSize - 1)] = L'\0';
+                std::wstring wFieldName(nameBuffer, nameSize);
+                std::string fieldName = wstring_to_string(wFieldName);
+                std::cout << "  → Field name: '" << fieldName << "'" << std::endl;
+            }
+        }
+    }
+
+    std::cout << "=== End debug scan ===" << std::endl;
+}
+
+
 // utility method for complete document scanning workflow
 std::map<std::string, std::string> SinosecuScanner::scanDocumentComplete(int timeoutSeconds) {
     std::map<std::string, std::string> result;
@@ -682,21 +855,21 @@ std::map<std::string, std::string> SinosecuScanner::scanDocumentComplete(int tim
 
     std::cout << "\n=== Starting Complete Document Scan ===" << std::endl;
 
-    // Step 1: Wait for document detection
+    // Wait for document detection
     int detectionResult = waitForDocumentDetection(timeoutSeconds);
     if (detectionResult != 1) {
         result["error"] = "Document detection failed: " + std::to_string(detectionResult);
         return result;
     }
 
-    // Step 2: Process the document
+    // Process the document
     auto processResult = autoProcessDocument();
     int status = processResult["status"];
     int cardType = processResult["cardType"];
 
     std::cout << "Processing result: " << status << ", Card type: " << cardType << std::endl;
 
-    // Step 3: Handle results with better error tolerance
+    // Handle results with better error tolerance
     if (status > 0 || status == -8 || status == -9) {
         // Success or partial success
         result["status"] = (status > 0) ? "success" : "partial_success";
@@ -714,7 +887,7 @@ std::map<std::string, std::string> SinosecuScanner::scanDocumentComplete(int tim
         if (!docName.empty()) {
             result["document_type"] = docName;
         } else {
-            result["document_type"] = "passport"; // Default for passports
+            result["document_type"] = "passport";
         }
 
     } else {
@@ -726,7 +899,7 @@ std::map<std::string, std::string> SinosecuScanner::scanDocumentComplete(int tim
         return result; // Don't try to extract fields on complete failure
     }
 
-    // Step 4: Extract fields with error handling
+    // Extract fields with error handling
     try {
         std::cout << "Extracting OCR fields..." << std::endl;
         auto ocrFields = getDocumentFields(1); // OCR fields
@@ -750,6 +923,19 @@ std::map<std::string, std::string> SinosecuScanner::scanDocumentComplete(int tim
     }
 
     std::cout << "=== Document Scan Complete ===" << std::endl;
+
+    return result;
+}
+
+std::map<std::string, std::string> SinosecuScanner::scanDocumentCompleteWithDebug(int timeoutSeconds, bool enableDebug) {
+    auto result = scanDocumentComplete(timeoutSeconds);
+
+    if (enableDebug && (result["status"] == "success" || result["status"] == "partial_success")) {
+        std::cout << "\n=== DEBUG MODE ENABLED ===" << std::endl;
+        debugAllAvailableFields(1); // OCR fields
+        debugAllAvailableFields(0); // Chip fields
+    }
+
     return result;
 }
 
